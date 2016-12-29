@@ -37,6 +37,9 @@ setup(
     install_requires=[
         'ioctl-opt',
     ],
+    tests_requires=[
+        'python-libusb1',
+    ],
     classifiers=[
         'Intended Audience :: Developers',
         'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',
