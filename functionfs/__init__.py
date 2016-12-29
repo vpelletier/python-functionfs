@@ -429,7 +429,7 @@ class EndpointFile(EndpointFileBase):
     def isHalted(self):
         return self._halted
 
-class EndpointOUTFile(EndpointFile):
+class EndpointINFile(EndpointFile):
     """
     Write-only endpoint file.
     """
@@ -441,9 +441,9 @@ class EndpointOUTFile(EndpointFile):
         raise IOError('File not open for reading')
 
     def _halt(self):
-        super(EndpointOUTFile, self).read(0)
+        super(EndpointINFile, self).read(0)
 
-class EndpointINFile(EndpointFile):
+class EndpointOUTFile(EndpointFile):
     """
     Read-only endpoint file.
     """
@@ -455,7 +455,7 @@ class EndpointINFile(EndpointFile):
         raise IOError('File not open for writing')
 
     def _halt(self):
-        super(EndpointINFile, self).write('')
+        super(EndpointOUTFile, self).write('')
 
 _INFINITY = itertools.repeat(None)
 _ONCE = (None, )
