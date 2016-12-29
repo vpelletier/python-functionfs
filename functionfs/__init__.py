@@ -439,6 +439,13 @@ class EndpointINFile(EndpointFile):
         Always raises IOError.
         """
         raise IOError('File not open for reading')
+    readinto = read
+    readall = read
+    readlines = read
+    readline = read
+
+    def readable(self):
+        return False
 
     def _halt(self):
         super(EndpointINFile, self).read(0)
@@ -453,6 +460,10 @@ class EndpointOUTFile(EndpointFile):
         Always raises IOError.
         """
         raise IOError('File not open for writing')
+    writelines = write
+
+    def writable(self):
+        return False
 
     def _halt(self):
         super(EndpointOUTFile, self).write('')
