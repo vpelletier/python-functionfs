@@ -1,1 +1,3 @@
+/dist
+/functionfs.egg-info
 *.pyc
