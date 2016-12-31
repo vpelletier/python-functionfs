@@ -13,6 +13,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
+from time import time
 import usb1
 from . import common
 
@@ -90,6 +91,35 @@ def main():
             64,
         ))
 
+        # XXX: untested (DWC3 bug on 4.9/4.10 ?)
+        size = [0]
+        def onTransfer(transfer):
+            result = time() < deadline
+            if result:
+                size[0] += transfer.getActualLength()
+            return result
+
+        usb_file_data_reader = usb1.USBTransferHelper()
+        usb_file_data_reader.setEventCallback(
+            usb1.TRANSFER_COMPLETED,
+            onTransfer,
+        )
+        transfer_list = []
+        for _ in xrange(8):
+            transfer = handle.getTransfer()
+            transfer.setBulk(
+                1 | usb1.ENDPOINT_IN,
+                0x8000,
+                callback=usb_file_data_reader,
+                timeout=5000,
+            )
+            transfer.submit()
+            transfer_list.append(transfer)
+
+        deadline = time() + 5
+        while any(x.isSubmitted() for x in transfer_list):
+            context.handleEvents()
+        print 'IN bandwidth: %.2f' % (size[0], )
 
 if __name__ == '__main__':
     main()

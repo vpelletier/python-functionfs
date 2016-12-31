@@ -13,26 +13,47 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
+import errno
 import sys
 import threading
 import functionfs
 import functionfs.ch9
 from . import common
 
+BULK_MAX_PACKET_SIZE = 512
+
 INTERFACE_DESCRIPTOR = functionfs.getDescriptor(
     functionfs.USBInterfaceDescriptor,
     bInterfaceNumber=0,
     bAlternateSetting=0,
-    bNumEndpoints=0,
+    bNumEndpoints=2, # bulk-IN, bulk-OUT
     bInterfaceClass=functionfs.ch9.USB_CLASS_VENDOR_SPEC,
     bInterfaceSubClass=0,
     bInterfaceProtocol=0,
     iInterface=1,
 )
 
+EP_BULK_OUT_DESCRIPTOR = functionfs.getDescriptor(
+    functionfs.USBEndpointDescriptorNoAudio,
+    bEndpointAddress=1 | functionfs.ch9.USB_DIR_OUT,
+    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
+    wMaxpacketSize=BULK_MAX_PACKET_SIZE,
+    bInterval=0,
+)
+
+EP_BULK_IN_DESCRIPTOR = functionfs.getDescriptor(
+    functionfs.USBEndpointDescriptorNoAudio,
+    bEndpointAddress=2 | functionfs.ch9.USB_DIR_IN,
+    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
+    wMaxpacketSize=BULK_MAX_PACKET_SIZE,
+    bInterval=0,
+)
+
 DESC_LIST = (
     INTERFACE_DESCRIPTOR,
-    # TODO: endpoints
+    EP_BULK_OUT_DESCRIPTOR,
+    EP_BULK_IN_DESCRIPTOR,
+    # TODO: more endpoints
 )
 
 class FunctionFSTestDevice(functionfs.Function):
@@ -86,6 +107,36 @@ class FunctionFSTestDevice(functionfs.Function):
 
 def main(path):
     with FunctionFSTestDevice(path) as function:
+        echo_buf = bytearray(BULK_MAX_PACKET_SIZE)
+        def writer():
+            ep = function.getEndpoint(2)
+            while True:
+                try:
+                    ep.write(echo_buf)
+                except IOError, exc:
+                    if exc.errno not in (errno.EINTR, errno.EAGAIN):
+                        raise
+                    print 'w',
+                else:
+                    print 'W',
+        def reader():
+            ep = function.getEndpoint(1)
+            while True:
+                try:
+                    ep.readinto(echo_buf)
+                except IOError, exc:
+                    if exc.errno not in (errno.EINTR, errno.EAGAIN):
+                        raise
+                    print 'r',
+                else:
+                    print 'R',
+        # XXX: {write,read}thread untested (DWC3 bug on 4.9/4.10 ?)
+        writethread = threading.Thread(target=writer)
+        writethread.daemon = True
+        writethread.start()
+        readthread = threading.Thread(target=reader)
+        readthread.daemon = True
+        readthread.start()
         print 'Servicing functionfs events forever...'
         function.processEventsForever()
 
