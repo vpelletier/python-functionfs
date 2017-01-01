@@ -60,9 +60,9 @@ class FunctionFSTestDevice(functionfs.Function):
     def __init__(self, path):
         super(FunctionFSTestDevice, self).__init__(
             path,
-            fs_list=DESC_LIST,
+#            fs_list=DESC_LIST,
             hs_list=DESC_LIST,
-            ss_list=DESC_LIST,
+#            ss_list=DESC_LIST,
             lang_dict={
                 0x0409: [x.decode('utf-8') for x in (
                     common.INTERFACE_NAME,
