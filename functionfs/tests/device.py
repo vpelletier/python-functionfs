@@ -37,7 +37,7 @@ EP_BULK_OUT_DESCRIPTOR = functionfs.getDescriptor(
     functionfs.USBEndpointDescriptorNoAudio,
     bEndpointAddress=1 | functionfs.ch9.USB_DIR_OUT,
     bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
-    wMaxpacketSize=BULK_MAX_PACKET_SIZE,
+    wMaxPacketSize=BULK_MAX_PACKET_SIZE,
     bInterval=0,
 )
 
@@ -45,7 +45,7 @@ EP_BULK_IN_DESCRIPTOR = functionfs.getDescriptor(
     functionfs.USBEndpointDescriptorNoAudio,
     bEndpointAddress=2 | functionfs.ch9.USB_DIR_IN,
     bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
-    wMaxpacketSize=BULK_MAX_PACKET_SIZE,
+    wMaxPacketSize=BULK_MAX_PACKET_SIZE,
     bInterval=0,
 )
 
