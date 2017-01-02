@@ -126,9 +126,6 @@ def main(path):
                 except IOError, exc:
                     if exc.errno not in (errno.EINTR, errno.EAGAIN):
                         raise
-                    print 'w',
-                else:
-                    print 'W',
         def reader():
             ep = function.getEndpoint(1)
             while True:
@@ -137,9 +134,6 @@ def main(path):
                 except IOError, exc:
                     if exc.errno not in (errno.EINTR, errno.EAGAIN):
                         raise
-                    print 'r',
-                else:
-                    print 'R',
         # XXX: {write,read}thread untested (DWC3 bug on 4.9/4.10 ?)
         writethread = threading.Thread(target=writer)
         writethread.daemon = True
