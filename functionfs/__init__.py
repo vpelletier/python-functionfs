@@ -335,8 +335,8 @@ def serialise(structure):
     return (ctypes.c_char * ctypes.sizeof(structure)).from_address(ctypes.addressof(structure))
 
 class EndpointFileBase(io.FileIO):
-    def _ioctl(self, func, arg=0, mutate_flag=False):
-        result = fcntl.ioctl(self, func, arg, mutate_flag)
+    def _ioctl(self, func, *args, **kw):
+        result = fcntl.ioctl(self, func, *args, **kw)
         if result < 0:
             raise IOError(result)
         return result
