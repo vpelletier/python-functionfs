@@ -117,7 +117,7 @@ class FunctionFSTestDevice(functionfs.Function):
 
 def main(path):
     with FunctionFSTestDevice(path) as function:
-        echo_buf = bytearray(512)
+        echo_buf = bytearray(0x10000)
         def writer():
             ep = function.getEndpoint(2)
             while True:
