@@ -362,9 +362,15 @@ class Endpoint0File(EndpointFileBase):
 
     def getRealInterfaceNumber(self, interface):
         """
-        Returns the host-visible interface number.
+        Returns the host-visible interface number, or None if there is no such
+        interface.
         """
-        return self._ioctl(INTERFACE_REVMAP, interface)
+        try:
+            return self._ioctl(INTERFACE_REVMAP, interface)
+        except IOError, exc:
+            if exc.errno == errno.EDOM:
+                return
+            raise
 
     # TODO: Add any standard IOCTL in usb_gadget_ops.ioctl ?
 
