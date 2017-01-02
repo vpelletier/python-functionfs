@@ -71,7 +71,7 @@ class FunctionFSTestDevice(functionfs.Function):
                 ),
                 functionfs.getDescriptor(
                     functionfs.USBEndpointDescriptorNoAudio,
-                    bEndpointAddress=2 | functionfs.ch9.USB_DIR_IN,
+                    bEndpointAddress=1 | functionfs.ch9.USB_DIR_IN,
                     bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
                     wMaxPacketSize=FS_BULK_MAX_PACKET_SIZE,
                     bInterval=0,
@@ -88,7 +88,7 @@ class FunctionFSTestDevice(functionfs.Function):
                 ),
                 functionfs.getDescriptor(
                     functionfs.USBEndpointDescriptorNoAudio,
-                    bEndpointAddress=2 | functionfs.ch9.USB_DIR_IN,
+                    bEndpointAddress=1 | functionfs.ch9.USB_DIR_IN,
                     bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
                     wMaxPacketSize=HS_BULK_MAX_PACKET_SIZE,
                     bInterval=0,
