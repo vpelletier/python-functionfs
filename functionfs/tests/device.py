@@ -34,6 +34,28 @@ INTERFACE_DESCRIPTOR = functionfs.getDescriptor(
     iInterface=1,
 )
 
+class EPThread(threading.Thread):
+    daemon = True
+
+    def __init__(self, method, echo_buf, **kw):
+        super(EPThread, self).__init__(**kw)
+        self.__method = method
+        self.__echo_buf = echo_buf
+
+    def run(self):
+        method = self.__method
+        echo_buf = self.__echo_buf
+        print self.name, 'start'
+        while True:
+            try:
+                method(echo_buf)
+            except IOError, exc:
+                if exc.errno == errno.ESHUTDOWN:
+                    break
+                if exc.errno not in (errno.EINTR, errno.EAGAIN):
+                    raise
+        print self.name, 'exit'
+
 class FunctionFSTestDevice(functionfs.Function):
     def __init__(self, path):
         super(FunctionFSTestDevice, self).__init__(
@@ -80,9 +102,52 @@ class FunctionFSTestDevice(functionfs.Function):
             },
         )
         self.__echo_payload = 'NOT SET'
+        ep_echo_payload_bulk = bytearray(0x10000)
+        self.__writethread = EPThread(
+            name='IN',
+            method=self.getEndpoint(2).write,
+            echo_buf=ep_echo_payload_bulk,
+        )
+        self.__readthread = EPThread(
+            name='OUT',
+            method=self.getEndpoint(1).readinto,
+            echo_buf=ep_echo_payload_bulk,
+        )
 
     def onEnable(self):
         print 'functionfs: ENABLE'
+        print 'Real interface 0:', self.ep0.getRealInterfaceNumber(0)
+        for caption, ep in (
+            ('IN', self.getEndpoint(2)),
+            ('OUT', self.getEndpoint(1)),
+        ):
+            print caption + ':'
+            descriptor = ep.getDescriptor()
+            for klass in reversed(descriptor.__class__.mro()):
+                for arg_id, _ in getattr(klass, '_fields_', ()):
+                    print '  %s\t%s' % (
+                        {
+                            'b': '0x%02x',
+                            'w': '0x%04x',
+                        }[arg_id[0]] % (getattr(descriptor, arg_id), ),
+                        arg_id,
+                    )
+            print '  FIFO status:',
+            try:
+                value = ep.getFIFOStatus()
+            except IOError, exc:
+                if exc.errno == errno.ENOTSUP:
+                    print 'ENOTSUP'
+                else:
+                    raise
+            else:
+                print value
+            print '  Real number:', ep.getRealEndpointNumber()
+            # XXX: can this raise if endpoint is not halted ?
+            ep.clearHalt()
+            ep.flushFIFO()
+        self.__writethread.start()
+        self.__readthread.start()
 
     def onDisable(self):
         print 'functionfs: DISABLE'
@@ -117,32 +182,11 @@ class FunctionFSTestDevice(functionfs.Function):
 
 def main(path):
     with FunctionFSTestDevice(path) as function:
-        echo_buf = bytearray(0x10000)
-        def writer():
-            ep = function.getEndpoint(2)
-            while True:
-                try:
-                    ep.write(echo_buf)
-                except IOError, exc:
-                    if exc.errno not in (errno.EINTR, errno.EAGAIN):
-                        raise
-        def reader():
-            ep = function.getEndpoint(1)
-            while True:
-                try:
-                    ep.readinto(echo_buf)
-                except IOError, exc:
-                    if exc.errno not in (errno.EINTR, errno.EAGAIN):
-                        raise
-        # XXX: {write,read}thread untested (DWC3 bug on 4.9/4.10 ?)
-        writethread = threading.Thread(target=writer)
-        writethread.daemon = True
-        writethread.start()
-        readthread = threading.Thread(target=reader)
-        readthread.daemon = True
-        readthread.start()
         print 'Servicing functionfs events forever...'
-        function.processEventsForever()
+        try:
+            function.processEventsForever()
+        except KeyboardInterrupt:
+            pass
 
 if __name__ == '__main__':
     main(*sys.argv[1:])
