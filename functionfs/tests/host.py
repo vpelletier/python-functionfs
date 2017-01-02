@@ -91,7 +91,6 @@ def main():
             64,
         ))
 
-        # XXX: untested (DWC3 bug on 4.9/4.10 ?)
         size = [0]
         def onTransfer(transfer):
             result = time() < deadline
@@ -104,24 +103,28 @@ def main():
             usb1.TRANSFER_COMPLETED,
             onTransfer,
         )
-        transfer_list = []
-        for _ in xrange(8):
-            transfer = handle.getTransfer()
-            transfer.setBulk(
-                1,
-                0x8000,
-                callback=usb_file_data_reader,
-                timeout=5000,
-            )
-            transfer.submit()
-            transfer_list.append(transfer)
+        transfer_list = [handle.getTransfer() for _ in xrange(8)]
 
         DURATION = 5
-        deadline = time() + DURATION
-        while any(x.isSubmitted() for x in transfer_list):
-            context.handleEvents()
-        print 'OUT bandwidth: %.2f B/s' % (size[0] / DURATION, )
-        # TODO: test IN bandwidth (does not work for some reason)
+        for caption, direction in (
+            ('OUT', usb1.ENDPOINT_OUT),
+            ('IN', usb1.ENDPOINT_IN),
+        ):
+            size[0] = 0
+            for transfer in transfer_list:
+                transfer.setBulk(
+                    1 | direction,
+                    0x8000,
+                    callback=usb_file_data_reader,
+                    timeout=5000,
+                )
+                transfer.submit()
+            begin = time()
+            deadline = begin + DURATION
+            while any(x.isSubmitted() for x in transfer_list):
+                context.handleEvents()
+            actual_duration = time() - begin
+            print caption, 'bandwidth: %i B/s (%.2fs)' % (size[0] / actual_duration, actual_duration)
 
 if __name__ == '__main__':
     main()
