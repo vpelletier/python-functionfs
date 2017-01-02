@@ -108,7 +108,7 @@ def main():
         for _ in xrange(8):
             transfer = handle.getTransfer()
             transfer.setBulk(
-                1 | usb1.ENDPOINT_IN,
+                1,
                 0x8000,
                 callback=usb_file_data_reader,
                 timeout=5000,
@@ -116,10 +116,12 @@ def main():
             transfer.submit()
             transfer_list.append(transfer)
 
-        deadline = time() + 5
+        DURATION = 5
+        deadline = time() + DURATION
         while any(x.isSubmitted() for x in transfer_list):
             context.handleEvents()
-        print 'IN bandwidth: %.2f' % (size[0], )
+        print 'OUT bandwidth: %.2f B/s' % (size[0] / DURATION, )
+        # TODO: test IN bandwidth (does not work for some reason)
 
 if __name__ == '__main__':
     main()
