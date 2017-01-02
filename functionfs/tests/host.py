@@ -105,6 +105,7 @@ def main():
         )
         transfer_list = [handle.getTransfer() for _ in xrange(8)]
 
+        handle.claimInterface(0)
         DURATION = 5
         for caption, direction in (
             ('OUT', usb1.ENDPOINT_OUT),
