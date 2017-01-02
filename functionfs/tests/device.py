@@ -20,7 +20,8 @@ import functionfs
 import functionfs.ch9
 from . import common
 
-BULK_MAX_PACKET_SIZE = 512
+FS_BULK_MAX_PACKET_SIZE = 64
+HS_BULK_MAX_PACKET_SIZE = 512
 
 INTERFACE_DESCRIPTOR = functionfs.getDescriptor(
     functionfs.USBInterfaceDescriptor,
@@ -33,35 +34,44 @@ INTERFACE_DESCRIPTOR = functionfs.getDescriptor(
     iInterface=1,
 )
 
-EP_BULK_OUT_DESCRIPTOR = functionfs.getDescriptor(
-    functionfs.USBEndpointDescriptorNoAudio,
-    bEndpointAddress=1 | functionfs.ch9.USB_DIR_OUT,
-    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
-    wMaxPacketSize=BULK_MAX_PACKET_SIZE,
-    bInterval=0,
-)
-
-EP_BULK_IN_DESCRIPTOR = functionfs.getDescriptor(
-    functionfs.USBEndpointDescriptorNoAudio,
-    bEndpointAddress=2 | functionfs.ch9.USB_DIR_IN,
-    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
-    wMaxPacketSize=BULK_MAX_PACKET_SIZE,
-    bInterval=0,
-)
-
-DESC_LIST = (
-    INTERFACE_DESCRIPTOR,
-    EP_BULK_OUT_DESCRIPTOR,
-    EP_BULK_IN_DESCRIPTOR,
-    # TODO: more endpoints
-)
-
 class FunctionFSTestDevice(functionfs.Function):
     def __init__(self, path):
         super(FunctionFSTestDevice, self).__init__(
             path,
-#            fs_list=DESC_LIST,
-            hs_list=DESC_LIST,
+            fs_list=(
+                INTERFACE_DESCRIPTOR,
+                functionfs.getDescriptor(
+                    functionfs.USBEndpointDescriptorNoAudio,
+                    bEndpointAddress=1 | functionfs.ch9.USB_DIR_OUT,
+                    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
+                    wMaxPacketSize=FS_BULK_MAX_PACKET_SIZE,
+                    bInterval=0,
+                ),
+                functionfs.getDescriptor(
+                    functionfs.USBEndpointDescriptorNoAudio,
+                    bEndpointAddress=2 | functionfs.ch9.USB_DIR_IN,
+                    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
+                    wMaxPacketSize=FS_BULK_MAX_PACKET_SIZE,
+                    bInterval=0,
+                ),
+            ),
+            hs_list=(
+                INTERFACE_DESCRIPTOR,
+                functionfs.getDescriptor(
+                    functionfs.USBEndpointDescriptorNoAudio,
+                    bEndpointAddress=1 | functionfs.ch9.USB_DIR_OUT,
+                    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
+                    wMaxPacketSize=HS_BULK_MAX_PACKET_SIZE,
+                    bInterval=0,
+                ),
+                functionfs.getDescriptor(
+                    functionfs.USBEndpointDescriptorNoAudio,
+                    bEndpointAddress=2 | functionfs.ch9.USB_DIR_IN,
+                    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
+                    wMaxPacketSize=HS_BULK_MAX_PACKET_SIZE,
+                    bInterval=0,
+                ),
+            ),
 #            ss_list=DESC_LIST,
             lang_dict={
                 0x0409: [x.decode('utf-8') for x in (
@@ -107,7 +117,7 @@ class FunctionFSTestDevice(functionfs.Function):
 
 def main(path):
     with FunctionFSTestDevice(path) as function:
-        echo_buf = bytearray(BULK_MAX_PACKET_SIZE)
+        echo_buf = bytearray(512)
         def writer():
             ep = function.getEndpoint(2)
             while True:
