@@ -127,7 +127,7 @@ class FunctionFSTestDevice(functionfs.Function):
                 for arg_id, _ in getattr(klass, '_fields_', ()):
                     print '  %s\t%s' % (
                         {
-                            'b': '0x%02x',
+                            'b': '  0x%02x',
                             'w': '0x%04x',
                         }[arg_id[0]] % (getattr(descriptor, arg_id), ),
                         arg_id,

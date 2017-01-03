@@ -35,7 +35,8 @@ def main():
         alt_setting = interface[0]
         lang_id, = handle.getSupportedLanguageList()
         interface_name = handle.getStringDescriptor(alt_setting.getDescriptor(), lang_id)
-        assert interface_name == common.INTERFACE_NAME, repr(interface_name)
+        interface_name_ascii = handle.getASCIIStringDescriptor(alt_setting.getDescriptor())
+        assert interface_name == common.INTERFACE_NAME == interface_name_ascii, (repr(interface_name), repr(interface_name_ascii))
 
         try:
             handle.controlRead(
@@ -115,9 +116,9 @@ def main():
             for transfer in transfer_list:
                 transfer.setBulk(
                     1 | direction,
-                    0x8000,
+                    0x10000,
                     callback=usb_file_data_reader,
-                    timeout=5000,
+                    timeout=DURATION * 1000,
                 )
                 transfer.submit()
             begin = time()
