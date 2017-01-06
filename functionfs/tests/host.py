@@ -107,6 +107,8 @@ def main():
         )
         transfer_list = [handle.getTransfer() for _ in xrange(8)]
 
+        active_configuration = handle.getConfiguration()
+        assert active_configuration == 1, active_configuration
         handle.claimInterface(0)
         DURATION = 5
         for caption, direction in (
