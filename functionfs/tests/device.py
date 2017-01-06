@@ -41,20 +41,30 @@ class EPThread(threading.Thread):
         super(EPThread, self).__init__(**kw)
         self.__method = method
         self.__echo_buf = echo_buf
+        self.__run_lock = run_lock = threading.Lock()
+        run_lock.acquire()
+        super(EPThread, self).start()
+
+    def start(self):
+        self.__run_lock.release()
 
     def run(self):
         method = self.__method
         echo_buf = self.__echo_buf
-        print self.name, 'start'
+        run_lock = self.__run_lock
         while True:
-            try:
-                method(echo_buf)
-            except IOError, exc:
-                if exc.errno == errno.ESHUTDOWN:
-                    break
-                if exc.errno not in (errno.EINTR, errno.EAGAIN):
-                    raise
-        print self.name, 'exit'
+            run_lock.acquire()
+            print self.name, 'start'
+            while True:
+                try:
+                    method(echo_buf)
+                except IOError, exc:
+                    if exc.errno == errno.ESHUTDOWN:
+                        break
+                    if exc.errno not in (errno.EINTR, errno.EAGAIN):
+                        raise
+            print self.name, 'exit'
+            run_lock.acquire(False)
 
 class FunctionFSTestDevice(functionfs.Function):
     def __init__(self, path):
