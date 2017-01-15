@@ -27,6 +27,7 @@ def main():
         )
         if handle is None:
             print 'Device not found'
+            return
         device = handle.getDevice()
         assert len(device) == 1
         configuration = device[0]
