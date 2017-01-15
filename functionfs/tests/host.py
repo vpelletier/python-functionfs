@@ -115,14 +115,12 @@ def main():
             assert active_configuration == 1, active_configuration
         handle.claimInterface(0)
         DURATION = 5
-        for caption, direction in (
-            ('OUT', usb1.ENDPOINT_OUT),
-            ('IN', usb1.ENDPOINT_IN),
-        ):
+        for ep_desc in alt_setting:
+            ep = ep_desc.getAddress()
             size[0] = 0
             for transfer in transfer_list:
                 transfer.setBulk(
-                    1 | direction,
+                    ep,
                     0x10000,
                     callback=usb_file_data_reader,
                     timeout=DURATION * 1000,
@@ -133,7 +131,10 @@ def main():
             while any(x.isSubmitted() for x in transfer_list):
                 context.handleEvents()
             actual_duration = time() - begin
-            print caption, 'bandwidth: %i B/s (%.2fs)' % (size[0] / actual_duration, actual_duration)
+            print '%i%s' % (
+                ep & 0x7f,
+                'IN' if ep & 0x80 else 'OUT',
+            ), 'bandwidth: %i B/s (%.2fs)' % (size[0] / actual_duration, actual_duration)
 
 if __name__ == '__main__':
     main()
