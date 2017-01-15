@@ -108,7 +108,11 @@ def main():
         transfer_list = [handle.getTransfer() for _ in xrange(8)]
 
         active_configuration = handle.getConfiguration()
-        assert active_configuration == 1, active_configuration
+        if active_configuration != 1:
+            print 'Unexpected active configuration:', active_configuration
+            handle.setConfiguration(1)
+            active_configuration = handle.getConfiguration()
+            assert active_configuration == 1, active_configuration
         handle.claimInterface(0)
         DURATION = 5
         for caption, direction in (
