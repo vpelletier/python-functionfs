@@ -23,17 +23,6 @@ from . import common
 FS_BULK_MAX_PACKET_SIZE = 64
 HS_BULK_MAX_PACKET_SIZE = 512
 
-INTERFACE_DESCRIPTOR = functionfs.getDescriptor(
-    functionfs.USBInterfaceDescriptor,
-    bInterfaceNumber=0,
-    bAlternateSetting=0,
-    bNumEndpoints=2, # bulk-IN, bulk-OUT
-    bInterfaceClass=functionfs.ch9.USB_CLASS_VENDOR_SPEC,
-    bInterfaceSubClass=0,
-    bInterfaceProtocol=0,
-    iInterface=1,
-)
-
 class EPThread(threading.Thread):
     daemon = True
 
@@ -68,42 +57,45 @@ class EPThread(threading.Thread):
 
 class FunctionFSTestDevice(functionfs.Function):
     def __init__(self, path):
+        ep_list = (
+            1 | functionfs.ch9.USB_DIR_IN,
+            1 | functionfs.ch9.USB_DIR_OUT,
+        )
+        INTERFACE_DESCRIPTOR = functionfs.getDescriptor(
+            functionfs.USBInterfaceDescriptor,
+            bInterfaceNumber=0,
+            bAlternateSetting=0,
+            bNumEndpoints=len(ep_list),
+            bInterfaceClass=functionfs.ch9.USB_CLASS_VENDOR_SPEC,
+            bInterfaceSubClass=0,
+            bInterfaceProtocol=0,
+            iInterface=1,
+        )
+        fs_list = [INTERFACE_DESCRIPTOR]
+        hs_list = [INTERFACE_DESCRIPTOR]
+        for endpoint in ep_list:
+            fs_list.append(
+                functionfs.getDescriptor(
+                    functionfs.USBEndpointDescriptorNoAudio,
+                    bEndpointAddress=endpoint,
+                    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
+                    wMaxPacketSize=FS_BULK_MAX_PACKET_SIZE,
+                    bInterval=0,
+                )
+            )
+            hs_list.append(
+                functionfs.getDescriptor(
+                    functionfs.USBEndpointDescriptorNoAudio,
+                    bEndpointAddress=endpoint,
+                    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
+                    wMaxPacketSize=HS_BULK_MAX_PACKET_SIZE,
+                    bInterval=0,
+                )
+            )
         super(FunctionFSTestDevice, self).__init__(
             path,
-            fs_list=(
-                INTERFACE_DESCRIPTOR,
-                functionfs.getDescriptor(
-                    functionfs.USBEndpointDescriptorNoAudio,
-                    bEndpointAddress=1 | functionfs.ch9.USB_DIR_OUT,
-                    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
-                    wMaxPacketSize=FS_BULK_MAX_PACKET_SIZE,
-                    bInterval=0,
-                ),
-                functionfs.getDescriptor(
-                    functionfs.USBEndpointDescriptorNoAudio,
-                    bEndpointAddress=1 | functionfs.ch9.USB_DIR_IN,
-                    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
-                    wMaxPacketSize=FS_BULK_MAX_PACKET_SIZE,
-                    bInterval=0,
-                ),
-            ),
-            hs_list=(
-                INTERFACE_DESCRIPTOR,
-                functionfs.getDescriptor(
-                    functionfs.USBEndpointDescriptorNoAudio,
-                    bEndpointAddress=1 | functionfs.ch9.USB_DIR_OUT,
-                    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
-                    wMaxPacketSize=HS_BULK_MAX_PACKET_SIZE,
-                    bInterval=0,
-                ),
-                functionfs.getDescriptor(
-                    functionfs.USBEndpointDescriptorNoAudio,
-                    bEndpointAddress=1 | functionfs.ch9.USB_DIR_IN,
-                    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
-                    wMaxPacketSize=HS_BULK_MAX_PACKET_SIZE,
-                    bInterval=0,
-                ),
-            ),
+            fs_list=fs_list,
+            hs_list=hs_list,
 #            ss_list=DESC_LIST,
             lang_dict={
                 0x0409: [x.decode('utf-8') for x in (
@@ -113,26 +105,23 @@ class FunctionFSTestDevice(functionfs.Function):
         )
         self.__echo_payload = 'NOT SET'
         ep_echo_payload_bulk = bytearray(0x10000)
-        self.__writethread = EPThread(
-            name='IN',
-            method=self.getEndpoint(2).write,
-            echo_buf=ep_echo_payload_bulk,
-        )
-        self.__readthread = EPThread(
-            name='OUT',
-            method=self.getEndpoint(1).readinto,
-            echo_buf=ep_echo_payload_bulk,
-        )
+        assert len(self._ep_list) == len(ep_list) + 1
+        thread_list = self.__thread_list = []
+        for ep_file in self._ep_list[1:]:
+            thread_list.append(
+                EPThread(
+                    name=ep_file.name,
+                    method=getattr(ep_file, 'readinto' if ep_file.readable() else 'write'),
+                    echo_buf=ep_echo_payload_bulk,
+                )
+            )
 
     def onEnable(self):
         print 'functionfs: ENABLE'
         print 'Real interface 0:', self.ep0.getRealInterfaceNumber(0)
-        for caption, ep in (
-            ('IN', self.getEndpoint(2)),
-            ('OUT', self.getEndpoint(1)),
-        ):
-            print caption + ':'
-            descriptor = ep.getDescriptor()
+        for ep_file in self._ep_list[1:]:
+            print ep_file.name + ':'
+            descriptor = ep_file.getDescriptor()
             for klass in reversed(descriptor.__class__.mro()):
                 for arg_id, _ in getattr(klass, '_fields_', ()):
                     print '  %s\t%s' % (
@@ -144,7 +133,7 @@ class FunctionFSTestDevice(functionfs.Function):
                     )
             print '  FIFO status:',
             try:
-                value = ep.getFIFOStatus()
+                value = ep_file.getFIFOStatus()
             except IOError, exc:
                 if exc.errno == errno.ENOTSUP:
                     print 'ENOTSUP'
@@ -152,12 +141,12 @@ class FunctionFSTestDevice(functionfs.Function):
                     raise
             else:
                 print value
-            print '  Real number:', ep.getRealEndpointNumber()
+            print '  Real number:', ep_file.getRealEndpointNumber()
             # XXX: can this raise if endpoint is not halted ?
-            ep.clearHalt()
-            ep.flushFIFO()
-        self.__writethread.start()
-        self.__readthread.start()
+            ep_file.clearHalt()
+            ep_file.flushFIFO()
+        for thread in self.__thread_list:
+            thread.start()
 
     def onDisable(self):
         print 'functionfs: DISABLE'
