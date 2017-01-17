@@ -241,10 +241,10 @@ def getDescsV2(flags, fs_list=(), hs_list=(), ss_list=(), os_list=()):
                             type(descriptor),
                         ),
                     )
-            descriptor_dict = {
-                'desc_%i' % x: y
+            descriptor_map = [
+                ('desc_%i' % x,  y)
                 for x, y in enumerate(descriptor_list)
-            }
+            ]
             flags |= flag
             count_name = prefix + 'count'
             descr_name = prefix + 'descr'
@@ -256,13 +256,13 @@ def getDescsV2(flags, fs_list=(), hs_list=(), ss_list=(), os_list=()):
                     '_pack_': 1,
                     '_fields_': [
                         (x, type(y))
-                        for x, y in descriptor_dict.iteritems()
+                        for x, y in descriptor_map
                     ],
                 }
             )
             descr_field_list.append((descr_name, descr_type))
-            kw[count_name] = len(descriptor_dict)
-            kw[descr_name] = descr_type(**descriptor_dict)
+            kw[count_name] = len(descriptor_map)
+            kw[descr_name] = descr_type(**dict(descriptor_map))
         elif flags & flag:
             raise ValueError(
                 'Flag %r set but descriptor list empty, cannot generate type.' % (
