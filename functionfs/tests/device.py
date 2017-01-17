@@ -57,9 +57,15 @@ class EPThread(threading.Thread):
 
 class FunctionFSTestDevice(functionfs.Function):
     def __init__(self, path):
-        ep_list = (
-            1 | functionfs.ch9.USB_DIR_IN,
-            1 | functionfs.ch9.USB_DIR_OUT,
+        ep_list = sum(
+            [
+                [
+                    x | functionfs.ch9.USB_DIR_IN,
+                    x | functionfs.ch9.USB_DIR_OUT,
+                ]
+                for x in xrange(1, 16)
+            ],
+            [],
         )
         INTERFACE_DESCRIPTOR = functionfs.getDescriptor(
             functionfs.USBInterfaceDescriptor,
