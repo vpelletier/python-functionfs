@@ -136,7 +136,7 @@ def main():
             print '%i%s' % (
                 ep & 0x7f,
                 'IN' if ep & 0x80 else 'OUT',
-            ), 'bandwidth: %i B/s (%.2fs)' % (size[0] / actual_duration, actual_duration)
+            ), '\tbandwidth: %i B/s (%.2fs)' % (size[0] / actual_duration, actual_duration)
 
 if __name__ == '__main__':
     main()
