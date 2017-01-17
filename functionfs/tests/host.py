@@ -106,7 +106,8 @@ def main():
             usb1.TRANSFER_COMPLETED,
             onTransfer,
         )
-        transfer_list = [handle.getTransfer() for _ in xrange(8)]
+        NUM_TRANSFER = 8
+        transfer_list = [handle.getTransfer() for _ in xrange(NUM_TRANSFER)]
 
         active_configuration = handle.getConfiguration()
         if active_configuration != 1:
@@ -124,7 +125,7 @@ def main():
                     ep,
                     0x10000,
                     callback=usb_file_data_reader,
-                    timeout=DURATION * 1000,
+                    timeout=int(DURATION * 1000),
                 )
                 transfer.submit()
             begin = time()
