@@ -116,7 +116,7 @@ def main():
             active_configuration = handle.getConfiguration()
             assert active_configuration == 1, active_configuration
         handle.claimInterface(0)
-        DURATION = 5
+        DURATION = .2
         for ep_desc in alt_setting:
             ep = ep_desc.getAddress()
             size[0] = 0
