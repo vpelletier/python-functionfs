@@ -26,23 +26,34 @@ HS_BULK_MAX_PACKET_SIZE = 512
 class EPThread(threading.Thread):
     daemon = True
 
-    def __init__(self, method, echo_buf, **kw):
+    def __init__(self, ep_file, method, **kw):
         super(EPThread, self).__init__(**kw)
         self.__method = method
-        self.__echo_buf = echo_buf
+        self.ep_file = ep_file
+        self.echo_buf = bytearray(512)
         self.__run_lock = run_lock = threading.Lock()
         run_lock.acquire()
         super(EPThread, self).start()
 
     def start(self):
+        ep_num = self.ep_file.getDescriptor().bEndpointAddress
+        for offset in xrange(len(self.echo_buf)):
+            self.echo_buf[offset] = ep_num
+        if ep_num & functionfs.ch9.USB_DIR_IN:
+            self.check = lambda: False
+        else:
+            def check():
+                return ep_num != self.echo_buf[0]
+            self.check = check
         self.__run_lock.release()
 
     def run(self):
         method = self.__method
-        echo_buf = self.__echo_buf
+        echo_buf = self.echo_buf
         run_lock = self.__run_lock
         while True:
             run_lock.acquire()
+            check = self.check
             print self.name, 'start'
             while True:
                 try:
@@ -52,6 +63,8 @@ class EPThread(threading.Thread):
                         break
                     if exc.errno not in (errno.EINTR, errno.EAGAIN):
                         raise
+                if check():
+                    self.ep_file.halt()
             print self.name, 'exit'
             run_lock.acquire(False)
 
@@ -117,8 +130,8 @@ class FunctionFSTestDevice(functionfs.Function):
             thread_list.append(
                 EPThread(
                     name=ep_file.name,
+                    ep_file=ep_file,
                     method=getattr(ep_file, 'readinto' if ep_file.readable() else 'write'),
-                    echo_buf=ep_echo_payload_bulk,
                 )
             )
 

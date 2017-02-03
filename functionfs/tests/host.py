@@ -117,13 +117,19 @@ def main():
             assert active_configuration == 1, active_configuration
         handle.claimInterface(0)
         DURATION = .2
+        buf = bytearray(512)
         for ep_desc in alt_setting:
             ep = ep_desc.getAddress()
+            if ep & 0xf0:
+                buf[0] = 0
+            else:
+                for offset in xrange(len(buf)):
+                    buf[offset] = ep
             size[0] = 0
             for transfer in transfer_list:
                 transfer.setBulk(
                     ep,
-                    0x10000,
+                    buf,
                     callback=usb_file_data_reader,
                     timeout=int(DURATION * 1000),
                 )
@@ -136,7 +142,7 @@ def main():
             print '%i%s' % (
                 ep & 0x7f,
                 'IN' if ep & 0x80 else 'OUT',
-            ), '\tbandwidth: %i B/s (%.2fs)' % (size[0] / actual_duration, actual_duration)
+            ), '\tbandwidth: %i B/s (%.2fs)' % (size[0] / actual_duration, actual_duration), hex(buf[0])
 
 if __name__ == '__main__':
     main()
