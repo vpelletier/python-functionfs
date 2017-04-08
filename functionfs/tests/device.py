@@ -80,48 +80,62 @@ class FunctionFSTestDevice(functionfs.Function):
             ],
             [],
         )
-        INTERFACE_DESCRIPTOR = functionfs.getDescriptor(
-            functionfs.USBInterfaceDescriptor,
-            bInterfaceNumber=0,
-            bAlternateSetting=0,
-            bNumEndpoints=len(ep_list),
-            bInterfaceClass=functionfs.ch9.USB_CLASS_VENDOR_SPEC,
-            bInterfaceSubClass=0,
-            bInterfaceProtocol=0,
-            iInterface=1,
-        )
-        fs_list = [INTERFACE_DESCRIPTOR]
-        hs_list = [INTERFACE_DESCRIPTOR]
-        for endpoint in ep_list:
-            fs_list.append(
-                functionfs.getDescriptor(
-                    functionfs.USBEndpointDescriptorNoAudio,
-                    bEndpointAddress=endpoint,
-                    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
-                    wMaxPacketSize=FS_BULK_MAX_PACKET_SIZE,
-                    bInterval=0,
-                )
+        # Try allocating 15 endpoint pairs, then one EP less until success.
+        # Note: crude, will miss maximum EP count if there is more than one EP
+        # available in a direction than EPs available in the other.
+        while ep_list:
+            INTERFACE_DESCRIPTOR = functionfs.getDescriptor(
+                functionfs.USBInterfaceDescriptor,
+                bInterfaceNumber=0,
+                bAlternateSetting=0,
+                bNumEndpoints=len(ep_list),
+                bInterfaceClass=functionfs.ch9.USB_CLASS_VENDOR_SPEC,
+                bInterfaceSubClass=0,
+                bInterfaceProtocol=0,
+                iInterface=1,
             )
-            hs_list.append(
-                functionfs.getDescriptor(
-                    functionfs.USBEndpointDescriptorNoAudio,
-                    bEndpointAddress=endpoint,
-                    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
-                    wMaxPacketSize=HS_BULK_MAX_PACKET_SIZE,
-                    bInterval=0,
+            fs_list = [INTERFACE_DESCRIPTOR]
+            hs_list = [INTERFACE_DESCRIPTOR]
+            for endpoint in ep_list:
+                fs_list.append(
+                    functionfs.getDescriptor(
+                        functionfs.USBEndpointDescriptorNoAudio,
+                        bEndpointAddress=endpoint,
+                        bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
+                        wMaxPacketSize=FS_BULK_MAX_PACKET_SIZE,
+                        bInterval=0,
+                    )
                 )
-            )
-        super(FunctionFSTestDevice, self).__init__(
-            path,
-            fs_list=fs_list,
-            hs_list=hs_list,
-#            ss_list=DESC_LIST,
-            lang_dict={
-                0x0409: [x.decode('utf-8') for x in (
-                    common.INTERFACE_NAME,
-                )],
-            },
-        )
+                hs_list.append(
+                    functionfs.getDescriptor(
+                        functionfs.USBEndpointDescriptorNoAudio,
+                        bEndpointAddress=endpoint,
+                        bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
+                        wMaxPacketSize=HS_BULK_MAX_PACKET_SIZE,
+                        bInterval=0,
+                    )
+                )
+            try:
+                super(FunctionFSTestDevice, self).__init__(
+                    path,
+                    fs_list=fs_list,
+                    hs_list=hs_list,
+#                    ss_list=DESC_LIST,
+                    lang_dict={
+                        0x0409: [x.decode('utf-8') for x in (
+                            common.INTERFACE_NAME,
+                        )],
+                    },
+                )
+            except IOError, exc:
+                if exc.errno != errno.EINVAL:
+                    raise
+                ep_list.pop()
+            else:
+                print 'Succeeded with', len(ep_list), 'endpoints'
+                break
+        if not ep_list:
+            raise
         self.__echo_payload = 'NOT SET'
         ep_echo_payload_bulk = bytearray(0x10000)
         assert len(self._ep_list) == len(ep_list) + 1
