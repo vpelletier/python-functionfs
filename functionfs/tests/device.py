@@ -154,10 +154,7 @@ class FunctionFSTestDevice(functionfs.Function):
             try:
                 value = ep_file.getFIFOStatus()
             except IOError, exc:
-                if exc.errno == errno.ENOTSUP:
-                    print 'ENOTSUP'
-                else:
-                    raise
+                print '(failed: %r)' % (exc, )
             else:
                 print value
             print '  Real number:', ep_file.getRealEndpointNumber()
