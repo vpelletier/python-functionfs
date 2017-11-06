@@ -33,7 +33,7 @@ setup(
     url='http://github.com/vpelletier/python-functionfs',
     license='GPLv3+',
     platforms=['linux'],
-    packages=['functionfs'],
+    packages=['functionfs', 'functionfs.tests'],
     install_requires=[
         'ioctl-opt',
     ],
