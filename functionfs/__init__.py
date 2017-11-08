@@ -303,11 +303,11 @@ def getStrings(lang_dict):
     field_list = []
     kw = {}
     try:
-        str_count = len(next(lang_dict.itervalues()))
+        str_count = len(next(iter(lang_dict.values())))
     except StopIteration:
         str_count = 0
     else:
-        for lang, string_list in lang_dict.iteritems():
+        for lang, string_list in lang_dict.items():
             if len(string_list) != str_count:
                 raise ValueError('All values must have the same string count.')
             field_id = 'strings_%04x' % lang
