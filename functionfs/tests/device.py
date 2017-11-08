@@ -60,7 +60,7 @@ class EPThread(threading.Thread):
             while True:
                 try:
                     method(echo_buf)
-                except IOError, exc:
+                except IOError as exc:
                     if exc.errno == errno.ESHUTDOWN:
                         break
                     if exc.errno not in (errno.EINTR, errno.EAGAIN):
@@ -129,7 +129,7 @@ class FunctionFSTestDevice(functionfs.Function):
                         )],
                     },
                 )
-            except IOError, exc:
+            except IOError as exc:
                 if exc.errno != errno.EINVAL:
                     raise
                 ep_list.pop()
@@ -169,7 +169,7 @@ class FunctionFSTestDevice(functionfs.Function):
             print('  FIFO status:', end='')
             try:
                 value = ep_file.getFIFOStatus()
-            except IOError, exc:
+            except IOError as exc:
                 print('(failed: %r)' % (exc, ))
             else:
                 print(value)

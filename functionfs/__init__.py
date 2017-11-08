@@ -364,7 +364,7 @@ class Endpoint0File(EndpointFileBase):
                 self.read(0)
             else:
                 self.write('')
-        except IOError, exc:
+        except IOError as exc:
             if exc.errno != errno.EL2HLT:
                 raise
         else:
@@ -377,7 +377,7 @@ class Endpoint0File(EndpointFileBase):
         """
         try:
             return self._ioctl(INTERFACE_REVMAP, interface)
-        except IOError, exc:
+        except IOError as exc:
             if exc.errno == errno.EDOM:
                 return
             raise
@@ -435,7 +435,7 @@ class EndpointFile(EndpointFileBase):
         """
         try:
             self._halt()
-        except IOError, exc:
+        except IOError as exc:
             if exc.errno != errno.EBADMSG:
                 raise
         else:
@@ -605,7 +605,7 @@ class Function(object):
                 break
             try:
                 length = readinto(buf)
-            except IOError, exc:
+            except IOError as exc:
                 if exc.errno == errno.EINTR:
                     continue
                 raise
