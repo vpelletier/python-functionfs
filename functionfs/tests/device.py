@@ -124,9 +124,9 @@ class FunctionFSTestDevice(functionfs.Function):
                     hs_list=hs_list,
 #                    ss_list=DESC_LIST,
                     lang_dict={
-                        0x0409: [x.decode('utf-8') for x in (
+                        0x0409: [
                             common.INTERFACE_NAME,
-                        )],
+                        ],
                     },
                 )
             except IOError as exc:
