@@ -39,7 +39,7 @@ class EPThread(threading.Thread):
 
     def start(self):
         ep_num = self.ep_file.getDescriptor().bEndpointAddress
-        for offset in xrange(len(self.echo_buf)):
+        for offset in range(len(self.echo_buf)):
             self.echo_buf[offset] = ep_num
         if ep_num & functionfs.ch9.USB_DIR_IN:
             self.check = lambda: False
@@ -78,7 +78,7 @@ class FunctionFSTestDevice(functionfs.Function):
                     x | functionfs.ch9.USB_DIR_IN,
                     x | functionfs.ch9.USB_DIR_OUT,
                 ]
-                for x in xrange(1, 16)
+                for x in range(1, 16)
             ],
             [],
         )
