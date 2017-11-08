@@ -615,7 +615,7 @@ class Function(object):
                       # (by FunctionFS or in another thread or in a handler)
             count, remainder = divmod(length, event_len)
             assert remainder == 0, (length, event_len)
-            for index in xrange(count):
+            for index in range(count):
                 event = event_list[index]
                 event_type = event.type
                 if event_type == SETUP:

@@ -69,7 +69,7 @@ def main():
             raise ValueError('Did not stall')
 
         echo_value = None
-        for length in xrange(1, 65):
+        for length in range(1, 65):
             echo_next_value = handle.controlRead(
                 usb1.TYPE_VENDOR | usb1.RECIPIENT_INTERFACE,
                 common.REQUEST_ECHO,
@@ -109,7 +109,7 @@ def main():
             onTransfer,
         )
         NUM_TRANSFER = 8
-        transfer_list = [handle.getTransfer() for _ in xrange(NUM_TRANSFER)]
+        transfer_list = [handle.getTransfer() for _ in range(NUM_TRANSFER)]
 
         active_configuration = handle.getConfiguration()
         if active_configuration != 1:
@@ -125,7 +125,7 @@ def main():
             if ep & 0xf0:
                 buf[0] = 0
             else:
-                for offset in xrange(len(buf)):
+                for offset in range(len(buf)):
                     buf[offset] = ep
             size[0] = 0
             for transfer in transfer_list:
