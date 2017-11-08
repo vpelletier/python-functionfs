@@ -13,6 +13,8 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
+from __future__ import print_function
+
 import errno
 import sys
 import threading
@@ -54,7 +56,7 @@ class EPThread(threading.Thread):
         while True:
             run_lock.acquire()
             check = self.check
-            print self.name, 'start'
+            print(self.name, 'start')
             while True:
                 try:
                     method(echo_buf)
@@ -65,7 +67,7 @@ class EPThread(threading.Thread):
                         raise
                 if check():
                     self.ep_file.halt()
-            print self.name, 'exit'
+            print(self.name, 'exit')
             run_lock.acquire(False)
 
 class FunctionFSTestDevice(functionfs.Function):
@@ -132,7 +134,7 @@ class FunctionFSTestDevice(functionfs.Function):
                     raise
                 ep_list.pop()
             else:
-                print 'Succeeded with', len(ep_list), 'endpoints'
+                print('Succeeded with', len(ep_list), 'endpoints')
                 break
         if not ep_list:
             raise
@@ -150,28 +152,28 @@ class FunctionFSTestDevice(functionfs.Function):
             )
 
     def onEnable(self):
-        print 'functionfs: ENABLE'
-        print 'Real interface 0:', self.ep0.getRealInterfaceNumber(0)
+        print('functionfs: ENABLE')
+        print('Real interface 0:', self.ep0.getRealInterfaceNumber(0))
         for ep_file in self._ep_list[1:]:
-            print ep_file.name + ':'
+            print(ep_file.name + ':')
             descriptor = ep_file.getDescriptor()
             for klass in reversed(descriptor.__class__.mro()):
                 for arg_id, _ in getattr(klass, '_fields_', ()):
-                    print '  %s\t%s' % (
+                    print('  %s\t%s' % (
                         {
                             'b': '  0x%02x',
                             'w': '0x%04x',
                         }[arg_id[0]] % (getattr(descriptor, arg_id), ),
                         arg_id,
-                    )
-            print '  FIFO status:',
+                    ))
+            print('  FIFO status:', end='')
             try:
                 value = ep_file.getFIFOStatus()
             except IOError, exc:
-                print '(failed: %r)' % (exc, )
+                print('(failed: %r)' % (exc, ))
             else:
-                print value
-            print '  Real number:', ep_file.getRealEndpointNumber()
+                print(value)
+            print('  Real number:', ep_file.getRealEndpointNumber())
             # XXX: can this raise if endpoint is not halted ?
             ep_file.clearHalt()
             ep_file.flushFIFO()
@@ -179,19 +181,19 @@ class FunctionFSTestDevice(functionfs.Function):
             thread.start()
 
     def onDisable(self):
-        print 'functionfs: DISABLE'
+        print('functionfs: DISABLE')
 
     def onBind(self):
-        print 'functionfs: BIND'
+        print('functionfs: BIND')
 
     def onUnbind(self):
-        print 'functionfs: UNBIND'
+        print('functionfs: UNBIND')
 
     def onSuspend(self):
-        print 'functionfs: SUSPEND'
+        print('functionfs: SUSPEND')
 
     def onResume(self):
-        print 'functionfs: RESUME'
+        print('functionfs: RESUME')
 
     def onSetup(self, request_type, request, value, index, length):
         request_type_type = request_type & functionfs.ch9.USB_TYPE_MASK
@@ -202,7 +204,7 @@ class FunctionFSTestDevice(functionfs.Function):
                 elif length:
                     self.__echo_payload = self.ep0.read(length)
             else:
-                print 'functionfs: onSetup: halt'
+                print('functionfs: onSetup: halt')
                 self.ep0.halt(request_type)
         else:
             super(FunctionFSTestDevice, self).onSetup(
@@ -211,7 +213,7 @@ class FunctionFSTestDevice(functionfs.Function):
 
 def main(path):
     with FunctionFSTestDevice(path) as function:
-        print 'Servicing functionfs events forever...'
+        print('Servicing functionfs events forever...')
         try:
             function.processEventsForever()
         except KeyboardInterrupt:

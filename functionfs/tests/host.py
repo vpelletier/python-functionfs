@@ -13,6 +13,8 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
+from __future__ import print_function
+
 from time import time
 import usb1
 from . import common
@@ -26,7 +28,7 @@ def main():
             skip_on_error=True,
         )
         if handle is None:
-            print 'Device not found'
+            print('Device not found')
             return
         device = handle.getDevice()
         assert len(device) == 1
@@ -77,7 +79,7 @@ def main():
             )
             if echo_next_value == echo_value:
                 break
-            print repr(echo_next_value)
+            print(repr(echo_next_value))
             echo_value = echo_next_value
         handle.controlWrite(
             usb1.TYPE_VENDOR | usb1.RECIPIENT_INTERFACE,
@@ -86,13 +88,13 @@ def main():
             0,
             'foo bar baz',
         )
-        print repr(handle.controlRead(
+        print(repr(handle.controlRead(
             usb1.TYPE_VENDOR | usb1.RECIPIENT_INTERFACE,
             common.REQUEST_ECHO,
             0,
             0,
             64,
-        ))
+        )))
 
         size = [0]
         def onTransfer(transfer):
@@ -111,7 +113,7 @@ def main():
 
         active_configuration = handle.getConfiguration()
         if active_configuration != 1:
-            print 'Unexpected active configuration:', active_configuration
+            print('Unexpected active configuration:', active_configuration)
             handle.setConfiguration(1)
             active_configuration = handle.getConfiguration()
             assert active_configuration == 1, active_configuration
@@ -139,10 +141,10 @@ def main():
             while any(x.isSubmitted() for x in transfer_list):
                 context.handleEvents()
             actual_duration = time() - begin
-            print '%i%s' % (
+            print('%i%s' % (
                 ep & 0x7f,
                 'IN' if ep & 0x80 else 'OUT',
-            ), '\tbandwidth: %i B/s (%.2fs)' % (size[0] / actual_duration, actual_duration), hex(buf[0])
+            ), '\tbandwidth: %i B/s (%.2fs)' % (size[0] / actual_duration, actual_duration), hex(buf[0]))
 
 if __name__ == '__main__':
     main()
