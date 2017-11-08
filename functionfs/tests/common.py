@@ -13,7 +13,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
-INTERFACE_NAME = 'FunctionFSTestDevice'
+INTERFACE_NAME = u'FunctionFSTestDevice'
 
 REQUEST_ECHO = 1
 REQUEST_STALL = 2
