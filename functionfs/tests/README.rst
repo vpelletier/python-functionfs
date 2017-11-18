@@ -8,6 +8,7 @@ On device
 
   .. code:: sh
 
+    modprobe libcomposite
     cd /sys/kernel/config/usb_gadget/
     mkdir g1
     cd g1/
