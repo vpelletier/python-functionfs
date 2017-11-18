@@ -46,12 +46,9 @@ class Enum(object):
     def get(self, value, default=None):
         return self.reverse_dict.get(value, default)
 
-u8 = ctypes.c_ubyte
-assert ctypes.sizeof(u8) == 1
-le16 = ctypes.c_ushort
-assert ctypes.sizeof(le16) == 2
-le32 = ctypes.c_uint
-assert ctypes.sizeof(le32) == 4
+u8 = ctypes.c_uint8
+le16 = ctypes.c_uint16
+le32 = ctypes.c_uint32
 
 class USBDescriptorHeader(ctypes.LittleEndianStructure):
     """
