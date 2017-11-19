@@ -639,7 +639,7 @@ class Function(object):
         """
         Process kernel ep0 events until closed.
 
-        ep0 must be in blocking mode, otherwise behaves like `process`.
+        ep0 must be in blocking mode, otherwise behaves like `processEvents`.
         """
         self.__process(_INFINITY)
 
