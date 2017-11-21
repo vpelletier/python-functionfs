@@ -25,22 +25,11 @@ from .common import (
     USBDescriptorHeader,
     le32,
 )
+from . import ch9
 from .ch9 import (
     USBInterfaceDescriptor,
     USBEndpointDescriptorNoAudio,
     USBEndpointDescriptor,
-    USB_DIR_IN,
-    USB_DT_ENDPOINT,
-    USB_ENDPOINT_HALT,
-    USB_RECIP_ENDPOINT,
-    USB_RECIP_INTERFACE,
-    USB_RECIP_MASK,
-    USB_REQ_CLEAR_FEATURE,
-    USB_REQ_GET_STATUS,
-    USB_REQ_SET_FEATURE,
-    USB_TYPE_MASK,
-    USB_TYPE_STANDARD,
-    
 )
 from .functionfs import (
     DESCRIPTORS_MAGIC, STRINGS_MAGIC, DESCRIPTORS_MAGIC_V2,
@@ -360,7 +349,7 @@ class Endpoint0File(EndpointFileBase):
         Halt current endpoint.
         """
         try:
-            if request_type & USB_DIR_IN:
+            if request_type & ch9.USB_DIR_IN:
                 self.read(0)
             else:
                 self.write('')
@@ -544,7 +533,7 @@ class Function(object):
         strings = getStrings(lang_dict)
         ep0.write(serialise(strings))
         for descriptor in fs_list or hs_list or ss_list:
-            if descriptor.bDescriptorType == USB_DT_ENDPOINT:
+            if descriptor.bDescriptorType == ch9.USB_DT_ENDPOINT:
                 assert descriptor.bEndpointAddress not in ep_address_dict, (
                     descriptor,
                     ep_address_dict[descriptor.bEndpointAddress],
@@ -554,14 +543,13 @@ class Function(object):
                 ep_list.append(
                     (
                         EndpointINFile
-                        if descriptor.bEndpointAddress & USB_DIR_IN
+                        if descriptor.bEndpointAddress & ch9.USB_DIR_IN
                         else EndpointOUTFile
                     )(
                         os.path.join(path, 'ep%u' % (index, )),
                         'r+',
                     )
                 )
-
 
     @property
     def ep0(self):
@@ -718,15 +706,15 @@ class Function(object):
 
         May be overridden in subclass.
         """
-        if (request_type & USB_TYPE_MASK) == USB_TYPE_STANDARD:
-            recipient = request_type & USB_RECIP_MASK
-            is_in = (request_type & USB_DIR_IN) == USB_DIR_IN
-            if request == USB_REQ_GET_STATUS:
+        if (request_type & ch9.USB_TYPE_MASK) == ch9.USB_TYPE_STANDARD:
+            recipient = request_type & ch9.USB_RECIP_MASK
+            is_in = (request_type & ch9.USB_DIR_IN) == ch9.USB_DIR_IN
+            if request == ch9.USB_REQ_GET_STATUS:
                 if is_in and length == 2:
-                    if recipient == USB_RECIP_INTERFACE:
+                    if recipient == ch9.USB_RECIP_INTERFACE:
                         self.ep0.write('\x00\x00')
                         return
-                    elif recipient == USB_RECIP_ENDPOINT:
+                    elif recipient == ch9.USB_RECIP_ENDPOINT:
                         self.ep0.write(
                             struct.pack(
                                 'BB',
@@ -735,17 +723,17 @@ class Function(object):
                             ),
                         )
                         return
-            elif request == USB_REQ_CLEAR_FEATURE:
+            elif request == ch9.USB_REQ_CLEAR_FEATURE:
                 if not is_in and length == 0:
-                    if recipient == USB_RECIP_ENDPOINT:
-                        if value == USB_ENDPOINT_HALT:
+                    if recipient == ch9.USB_RECIP_ENDPOINT:
+                        if value == ch9.USB_ENDPOINT_HALT:
                             self.getEndpoint(index).clearHalt()
                             self.ep0.read(0)
                             return
-            elif request == USB_REQ_SET_FEATURE:
+            elif request == ch9.USB_REQ_SET_FEATURE:
                 if not is_in and length == 0:
-                    if recipient == USB_RECIP_ENDPOINT:
-                        if value == USB_ENDPOINT_HALT:
+                    if recipient == ch9.USB_RECIP_ENDPOINT:
+                        if value == ch9.USB_ENDPOINT_HALT:
                             self.getEndpoint(index).halt()
                             self.ep0.read(0)
                             return
