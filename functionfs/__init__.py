@@ -30,6 +30,8 @@ from .ch9 import (
     USBInterfaceDescriptor,
     USBEndpointDescriptorNoAudio,
     USBEndpointDescriptor,
+    USBSSEPCompDescriptor,
+    USBSSPIsocEndpointDescriptor,
 )
 from .functionfs import (
     DESCRIPTORS_MAGIC, STRINGS_MAGIC, DESCRIPTORS_MAGIC_V2,
@@ -62,6 +64,8 @@ __all__ = (
     'USBInterfaceDescriptor',
     'USBEndpointDescriptorNoAudio',
     'USBEndpointDescriptor',
+    'USBSSEPCompDescriptor',
+    'USBSSPIsocEndpointDescriptor',
     'OSExtCompatDesc',
 )
 
@@ -202,10 +206,11 @@ def getDescsV2(flags, fs_list=(), hs_list=(), ss_list=(), os_list=()):
             USBInterfaceDescriptor
             USBEndpointDescriptorNoAudio
             USBEndpointDescriptor
+            USBSSEPCompDescriptor
+            USBSSPIsocEndpointDescriptor
             TODO: HID
             TODO: OTG
             TODO: Interface Association
-            TODO: SS companion
             All (non-empty) lists must define the same number of interfaces
             and endpoints, and endpoint descriptors must be given in the same
             order, bEndpointAddress-wise.

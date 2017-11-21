@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
 import ctypes
-from .common import USBDescriptorHeader, u8, le16
+from .common import USBDescriptorHeader, u8, le16, le32
 
 # Translated from linux/usb/ch9.h
 # CONTROL REQUEST SUPPORT
@@ -373,6 +373,43 @@ USB_ENDPOINT_USAGE_MASK = 0x30
 USB_ENDPOINT_USAGE_DATA = 0x00
 USB_ENDPOINT_USAGE_FEEDBACK = 0x10
 USB_ENDPOINT_USAGE_IMPLICIT_FB = 0x20 # Implicit feedback Data endpoint
+
+# XXX: several utility functions, not translated (yet ?)
+
+class USBSSPIsocEndpointDescriptor(USBDescriptorHeader):
+    """
+    USB_DT_SSP_ISOC_ENDPOINT_COMP: SuperSpeedPlus Isochronous Endpoint
+    Companion descriptor
+    """
+    _bDescriptorType = USB_DT_SSP_ISOC_ENDPOINT_COMP
+    _fields_ = [
+        ('wReseved', le16),
+        ('dwBytesPerInterval', le32),
+    ]
+
+USB_DT_SSP_ISOC_EP_COMP_SIZE = 8
+assert ctypes.sizeof(USBSSPIsocEndpointDescriptor) == USB_DT_SSP_ISOC_EP_COMP_SIZE
+
+class USBSSEPCompDescriptor(USBDescriptorHeader):
+    """
+    USB_DT_SS_ENDPOINT_COMP: SuperSpeed Endpoint Companion descriptor
+    """
+    _bDescriptorType = USB_DT_SS_ENDPOINT_COMP
+    _fields_ = [
+        ('bMaxBurst', u8),
+        ('bmAttributes', u8),
+        ('wBytesPerInterval', le16),
+    ]
+
+    def getMaxStreamCount(self):
+        max_streams = self.bmAttributes & 0x1f
+        return 1 << max_streams if max_streams else 0
+
+USB_DT_SS_EP_COMP_SIZE = 6
+assert ctypes.sizeof(USBSSEPCompDescriptor) == USB_DT_SS_EP_COMP_SIZE
+
+USB_SS_MULT = lambda x: 1 + (x & 0x3)
+USB_SS_SSP_ISOC_COMP = lambda x: x & (1 <<7)
 
 # To be continued...
 
