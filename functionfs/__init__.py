@@ -508,6 +508,7 @@ class Function(object):
     Pythonic class for interfacing with FunctionFS.
     """
     _closed = False
+    _ep_list = () # Avoids failing in __del__ when (subclass') __init__ fails.
 
     def __init__(
         self,
