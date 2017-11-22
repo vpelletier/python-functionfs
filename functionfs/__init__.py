@@ -75,6 +75,7 @@ __all__ = (
     'Function',
 
     # XXX: Not very pythonic...
+    'getInterfaceInAllSpeeds',
     'getDescriptor',
     'getOSDesc',
     'getOSExtPropDesc',
@@ -89,6 +90,113 @@ __all__ = (
     'USBInterfaceAssocDescriptor',
     'OSExtCompatDesc',
 )
+
+_MAX_PACKET_SIZE_DICT = {
+    ch9.USB_ENDPOINT_XFER_ISOC: (
+        1023,   # 0..1023
+        1024,   # 0..1024
+        1024,   # 0..1024
+    ),
+    ch9.USB_ENDPOINT_XFER_BULK: (
+        64,     # 8, 16, 32, 64
+        512,    # 512 only
+        1024,   # 1024 only
+    ),
+    ch9.USB_ENDPOINT_XFER_INT: (
+        64,     # 0..64
+        1024,   # 0..1024
+        1024,   # 1..1024
+    ),
+}
+
+_EMPTY_DICT = {} # For internal ** falback usage
+def getInterfaceInAllSpeeds(interface, endpoint_list):
+    """
+    Produce similar fs, hs and ss interface and endpoints descriptors.
+    Should be useful for devices desiring to work in all 3 speeds with maimum
+    endpoint wMaxPacketSize. Reduces data duplication from descriptor
+    declarations.
+    Not intended to cover fancy combinations.
+
+    interface (dict):
+      Keyword arguments for
+        getDescriptor(USBInterfaceDescriptor, ...)
+      in all speeds.
+      bNumEndpoints must not be provided.
+    endpoint_list (list of dicts)
+      Each dict represents an endpoint, and may contain the following items:
+      - "endpoint": required, contains keyword arguments for
+          getDescriptor(USBEndpointDescriptorNoAudio, ...)
+        or
+          getDescriptor(USBEndpointDescriptor, ...)
+        The with-audio variant is picked when its extra fields are assigned a
+        value.
+        wMaxPacketSize must not be provided, it will be set to the maximum
+        size for given speed and endpoint type.
+        bmAttributes must be provided.
+      - "superspeed": optional, contains keyword arguments for
+          getDescriptor(USBSSEPCompDescriptor, ...)
+      - "superspeed_iso": optional, contains keyword arguments for
+          getDescriptor(USBSSPIsocEndpointDescriptor, ...)
+        Must be provided and non-empty only when endpoint is isochronous and
+        "superspeed" dict has "bmAttributes" bit 7 set.
+
+    Returns a 3-tuple of lists:
+    - fs descriptors
+    - hs descriptors
+    - ss descriptors
+    """
+    interface = getDescriptor(
+        USBInterfaceDescriptor,
+        bNumEndpoints=len(endpoint_list),
+        **interface
+    )
+    fs_list = [interface]
+    hs_list = [interface]
+    ss_list = [interface]
+    for endpoint in endpoint_list:
+        endpoint_kw = endpoint['endpoint']
+        fs_max, hs_max, ss_max = _MAX_PACKET_SIZE_DICT[
+            endpoint_kw['bmAttributes'] & ch9.USB_ENDPOINT_XFERTYPE_MASK
+        ]
+        klass = (
+            USBEndpointDescriptor
+            if 'bRefresh' in endpoint_kw or 'bSynchAddress' in endpoint_kw else
+            USBEndpointDescriptorNoAudio
+        )
+        fs_list.append(getDescriptor(
+            klass,
+            wMaxPacketSize=fs_max,
+            **endpoint_kw
+        ))
+        hs_list.append(getDescriptor(
+            klass,
+            wMaxPacketSize=hs_max,
+            **endpoint_kw
+        ))
+        ss_list.append(getDescriptor(
+            klass,
+            wMaxPacketSize=ss_max,
+            **endpoint_kw
+        ))
+        ss_list.append(getDescriptor(
+            USBSSEPCompDescriptor,
+            **endpoint.get('superspeed', _EMPTY_DICT)
+        ))
+        ssp_iso_kw = endpoint.get('superspeed_iso', _EMPTY_DICT)
+        if bool(ssp_iso_kw) != (
+            endpoint_kw.get('bmAttributes', 0) &
+            ch9.USB_ENDPOINT_XFERTYPE_MASK ==
+            ch9.USB_ENDPOINT_XFER_ISOC and
+            bool(USB_SS_SSP_ISOC_COMP(ss_kw.get('bmAttributes', 0)))
+        ):
+            raise ValueError('Inconsistent isochronous companion')
+        if ssp_iso_kw:
+            ss_list.append(getDescriptor(
+                USBSSPIsocEndpointDescriptor,
+                **ssp_iso_kw
+            ))
+    return (fs_list, hs_list, ss_list)
 
 def getDescriptor(klass, **kw):
     """
