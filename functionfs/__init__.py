@@ -13,6 +13,14 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
+"""
+Interfaces with functionfs to simplify USB gadget function declaration and
+implementation on linux.
+
+Defines standard USB descriptors (see "ch9" submodule) and sends them to the
+kernel to declare function's structure.
+Provides methods for accessing each endpoint and to react to events.
+"""
 import ctypes
 import errno
 import fcntl
@@ -63,6 +71,7 @@ from .functionfs import (
 )
 
 __all__ = (
+    'ch9',
     'Function',
 
     # XXX: Not very pythonic...
