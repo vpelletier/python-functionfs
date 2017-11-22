@@ -31,7 +31,15 @@ from .ch9 import (
     USBEndpointDescriptorNoAudio,
     USBEndpointDescriptor,
     USBSSEPCompDescriptor,
+    # USBSSPIsocEndpointDescriptor is not implemented in kernel as of this
+    # writing.
     USBSSPIsocEndpointDescriptor,
+    # USBQualifierDescriptor is reserved for gadgets, so don't expose it.
+    USBOTGDescriptor,
+    USBOTG20Descriptor,
+    # USBDebugDescriptor is not implemented in kernelas of this writing.
+    USBDebugDescriptor,
+    USBInterfaceAssocDescriptor,
 )
 from .functionfs import (
     DESCRIPTORS_MAGIC, STRINGS_MAGIC, DESCRIPTORS_MAGIC_V2,
@@ -66,6 +74,10 @@ __all__ = (
     'USBEndpointDescriptor',
     'USBSSEPCompDescriptor',
     'USBSSPIsocEndpointDescriptor',
+    'USBOTGDescriptor',
+    'USBOTG20Descriptor',
+    'USBDebugDescriptor',
+    'USBInterfaceAssocDescriptor',
     'OSExtCompatDesc',
 )
 
@@ -208,9 +220,10 @@ def getDescsV2(flags, fs_list=(), hs_list=(), ss_list=(), os_list=()):
             USBEndpointDescriptor
             USBSSEPCompDescriptor
             USBSSPIsocEndpointDescriptor
+            USBOTGDescriptor
+            USBOTG20Descriptor
+            USBInterfaceAssocDescriptor
             TODO: HID
-            TODO: OTG
-            TODO: Interface Association
             All (non-empty) lists must define the same number of interfaces
             and endpoints, and endpoint descriptors must be given in the same
             order, bEndpointAddress-wise.

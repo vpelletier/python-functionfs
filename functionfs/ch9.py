@@ -411,6 +411,69 @@ assert ctypes.sizeof(USBSSEPCompDescriptor) == USB_DT_SS_EP_COMP_SIZE
 USB_SS_MULT = lambda x: 1 + (x & 0x3)
 USB_SS_SSP_ISOC_COMP = lambda x: x & (1 <<7)
 
+class USBQualifierDescriptor(USBDescriptorHeader):
+    """
+    USB_DT_DEVICE_QUALIFIER: Device Qualifier descriptor
+    """
+    _bDescriptorType = USB_DT_DEVICE_QUALIFIER
+    _fields_ = [
+        ('bcdUSB', le16),
+        ('bDeviceClass', u8),
+        ('bDeviceSubClass', u8),
+        ('bDeviceProtocol', u8),
+        ('bMaxPacketSize0', u8),
+        ('bNumConfigurations', u8),
+        ('bRESERVED', u8),
+    ]
+
+class USBOTGDescriptor(USBDescriptorHeader):
+    """
+    USB_DT_OTG (from OTG 1.0a supplement)
+    """
+    _bDescriptorType = USB_DT_OTG
+    _fields_ = [
+        ('bmAttributes', u8),
+    ]
+
+class USBOTG20Descriptor(USBDescriptorHeader):
+    """
+    USB_DT_OTG (from OTG 2.0 supplement)
+    """
+    _bDescriptorType = USB_DT_OTG
+    _fields_ = [
+        ('bmAttributes', u8),
+        ('bcdOTG', le16),
+    ]
+
+USB_OTG_SRP = 1 << 0
+USB_OTG_HNP = 1 << 1
+USB_OTG_ADP = 1 << 2
+OTG_STS_SELECTOR = 0xf000
+
+class USBDebugDescriptor(USBDescriptorHeader):
+    """
+    USB_DT_DEBUG: for special highspeed devices, replacing serial console
+    """
+    _bDescriptorType = USB_DT_DEBUG
+    _fields_ = [
+        ('bDebugInEndpoint', u8),
+        ('bDebugOutEndpoint', u8),
+    ]
+
+class USBInterfaceAssocDescriptor(USBDescriptorHeader):
+    """
+    USB_DT_INTERFACE_ASSOCIATION: groups interfaces
+    """
+    _bDescriptorType = USB_DT_INTERFACE_ASSOCIATION
+    _fields_ = [
+        ('bFirstInterface', u8),
+        ('bInterfaceCount', u8),
+        ('bFunctionClass', u8),
+        ('bFunctionSubClass', u8),
+        ('bFunctionProtocol', u8),
+        ('iFunction', u8),
+    ]
+
 # To be continued...
 
 # Bonus not in ch9.h:
