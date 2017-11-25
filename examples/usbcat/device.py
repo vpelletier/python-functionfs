@@ -68,8 +68,9 @@ class USBCat(functionfs.Function):
         self.write = self.getEndpoint(1).write
 
     def close(self):
-        super(USBCat, self).close()
+        self._disable()
         self._aio_context.close()
+        super(USBCat, self).close()
 
     def onBind(self):
         """
