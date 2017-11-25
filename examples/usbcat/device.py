@@ -93,20 +93,27 @@ class USBCat(functionfs.Function):
         Endpoints become working files, so submit some read operations.
         """
         trace('onEnable')
-        if self._enabled:
-            self.onDisable()
+        self._disable()
         self._aio_context.submit(self._aio_recv_block_list)
         self._enabled = True
 
     def onDisable(self):
         trace('onDisable')
+        self._disable()
+
+    def _disable(self):
         """
         The configuration containing this function has been disabled by host.
         Endpoint do not work anymore, so cancel AIO operation blocks.
         """
         if self._enabled:
             for block in self._aio_recv_block_list:
-                self._aio_context.cancel(block)
+                try:
+                    self._aio_context.cancel(block)
+                except OSError as exc:
+                    trace(
+                        'cancelling %r raised: %s' % (block, exc),
+                    )
             self._enabled = False
 
     def readAIOCompletion(self):
