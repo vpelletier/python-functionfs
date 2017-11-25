@@ -4,7 +4,6 @@ import errno
 import fcntl
 import os
 import select
-from struct import pack, unpack
 import sys
 import functionfs
 import functionfs.ch9
@@ -87,9 +86,9 @@ class USBCat(functionfs.Function):
         self._enabled = True
         print('enabled', file=sys.stderr)
 
-    def onDiable(self):
+    def onDisable(self):
         """
-        The configuration contaiing this function has been disabled by host.
+        The configuration containing this function has been disabled by host.
         Endpoint do not work anymore, so cancel AIO operation blocks.
         """
         if self._enabled:
@@ -105,9 +104,7 @@ class USBCat(functionfs.Function):
         event_count = self.eventfd.read()
         print('eventfd reorts %i events' % event_count, file=sys.stderr)
         block_list = []
-        for block, res, _ in self._aio_context.getEvents(
-            event_count,
-        ):
+        for block, res, _ in self._aio_context.getEvents(event_count):
             if res != -errno.ESHUTDOWN:
                 block_list.append(block)
             if res < 0:
