@@ -2,6 +2,7 @@
 from __future__ import print_function
 import errno
 import fcntl
+import functools
 import os
 import select
 import sys
@@ -13,6 +14,8 @@ import libaio
 PENDING_READ_COUNT = 2
 # Large-ish buffer, to tolerate bursts without becoming a context switch storm.
 BUF_SIZE = 1024 * 1024
+
+trace = functools.partial(print, file=sys.stderr)
 
 class USBCat(functionfs.Function):
     _enabled = False
@@ -68,11 +71,18 @@ class USBCat(functionfs.Function):
         super(USBCat, self).close()
         self._aio_context.close()
 
+    def onBind(self):
+        """
+        Just for tracing purposes.
+        """
+        trace('onBind')
+
     def onUnbind(self):
         """
         Kernel may unbind us without calling disable, so call it ourselves to
         cancel AIO operation blocks.
         """
+        trace('onUnbind')
         self.onDisable()
 
     def onEnable(self):
@@ -80,13 +90,14 @@ class USBCat(functionfs.Function):
         The configuration containing this function has been enabled by host.
         Endpoints become working files, so submit some read operations.
         """
+        trace('onEnable')
         if self._enabled:
             self.onDisable()
         self._aio_context.submit(self._aio_recv_block_list)
         self._enabled = True
-        print('enabled', file=sys.stderr)
 
     def onDisable(self):
+        trace('onDisable')
         """
         The configuration containing this function has been disabled by host.
         Endpoint do not work anymore, so cancel AIO operation blocks.
@@ -95,22 +106,21 @@ class USBCat(functionfs.Function):
             for block in self._aio_recv_block_list:
                 self._aio_context.cancel(block)
             self._enabled = False
-            print('disabled', file=sys.stderr)
 
     def readAIOCompletion(self):
         """
         Call when eventfd notified events are available.
         """
         event_count = self.eventfd.read()
-        print('eventfd reorts %i events' % event_count, file=sys.stderr)
+        trace('eventfd reports %i events' % event_count)
         block_list = []
         for block, res, _ in self._aio_context.getEvents(event_count):
             if res != -errno.ESHUTDOWN:
                 block_list.append(block)
             if res < 0:
-                print('error:', res, file=sys.stderr)
+                trace('aio completion error:', -res)
             else:
-                print('received', res, 'bytes', file=sys.stderr)
+                trace('aio completion received', res, 'bytes')
                 buf, = block.buffer_list
                 self._writer(buf[:res])
         self._aio_context.submit(block_list)
@@ -127,7 +137,7 @@ def main(path):
         )
         def sender():
             buf = sys.stdin.read(BUF_SIZE)
-            print('sending', len(buf), 'bytes', file=sys.stderr)
+            trace('sending', len(buf), 'bytes')
             function.write(buf)
         epoll = select.epoll(3)
         event_dispatcher_dict = {}
@@ -147,10 +157,7 @@ def main(path):
         try:
             while True:
                 for fd, event in noIntrEpoll():
-                    print(
-                        'epoll: fd %r got event %r' % (fd, event),
-                        file=sys.stderr,
-                    )
+                    trace('epoll: fd %r got event %r' % (fd, event))
                     event_dispatcher_dict[fd]()
         except (KeyboardInterrupt, EOFError):
             pass
