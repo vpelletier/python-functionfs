@@ -134,12 +134,19 @@ def main(path):
         def register(file_object, handler):
             epoll.register(file_object, select.EPOLLIN)
             event_dispatcher_dict[file_object.fileno()] = handler
+        def noIntrEpoll():
+            while True:
+                try:
+                    return epoll.poll()
+                except IOError, exc:
+                    if exc.errno != errno.EINTR:
+                        raise
         register(function.eventfd, function.readAIOCompletion)
         register(function.ep0, function.processEvents)
         register(sys.stdin, sender)
         try:
             while True:
-                for fd, event in epoll.poll():
+                for fd, event in noIntrEpoll():
                     print(
                         'epoll: fd %r got event %r' % (fd, event),
                         file=sys.stderr,
