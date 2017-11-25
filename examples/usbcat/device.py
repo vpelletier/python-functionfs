@@ -79,11 +79,13 @@ class USBCat(functionfs.Function):
 
     def onUnbind(self):
         """
-        Kernel may unbind us without calling disable, so call it ourselves to
-        cancel AIO operation blocks.
+        Kernel may unbind us without calling disable.
+        Still, it does cancel all pending IOs before signaling unbinding, so
+        it is sufficient to mark us as disabled.
         """
         trace('onUnbind')
-        self.onDisable()
+        # XXX: wait for AIO blocks to actually terminate ?
+        self._enabled = False
 
     def onEnable(self):
         """
