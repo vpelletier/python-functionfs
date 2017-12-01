@@ -33,6 +33,14 @@ BUF_SIZE = 1024 * 1024
 
 trace = functools.partial(print, file=sys.stderr)
 
+def noIntr(func):
+    while True:
+        try:
+            return func()
+        except IOError, exc:
+            if exc.errno != errno.EINTR:
+                raise
+
 class USBCat(functionfs.Function):
     _enabled = False
 
@@ -140,7 +148,7 @@ class USBCat(functionfs.Function):
                         'cancelling %r raised: %s' % (block, exc),
                     )
             del self._aio_send_block_list[:]
-            self._aio_context.getEvents(min_nr=None)
+            noIntr(functools.partial(self._aio_context.getEvents, min_nr=None))
             self._enabled = False
 
     def onAIOCompletion(self):
@@ -209,13 +217,6 @@ def main(path):
     def register(file_object, handler):
         epoll.register(file_object, select.EPOLLIN)
         event_dispatcher_dict[file_object.fileno()] = handler
-    def noIntrEpoll():
-        while True:
-            try:
-                return epoll.poll()
-            except IOError, exc:
-                if exc.errno != errno.EINTR:
-                    raise
     with USBCat(
         path,
         sys.stdout.write,
@@ -231,7 +232,7 @@ def main(path):
         register(function.ep0, function.processEvents)
         try:
             while True:
-                for fd, event in noIntrEpoll():
+                for fd, event in noIntr(epoll.epoll):
                     trace('epoll: fd %r got event %r' % (fd, event))
                     event_dispatcher_dict[fd]()
         except (KeyboardInterrupt, EOFError):
