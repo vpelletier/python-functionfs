@@ -37,7 +37,7 @@ def noIntr(func):
     while True:
         try:
             return func()
-        except IOError, exc:
+        except (IOError, OSError) as exc:
             if exc.errno != errno.EINTR:
                 raise
 
