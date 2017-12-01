@@ -232,7 +232,7 @@ def main(path):
         register(function.ep0, function.processEvents)
         try:
             while True:
-                for fd, event in noIntr(epoll.epoll):
+                for fd, event in noIntr(epoll.poll):
                     trace('epoll: fd %r got event %r' % (fd, event))
                     event_dispatcher_dict[fd]()
         except (KeyboardInterrupt, EOFError):
