@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
 import datetime
+import errno
 import sys
 import time
 
@@ -30,6 +31,9 @@ def main():
             time.sleep(1)
     except KeyboardInterrupt:
         pass
+    except IOError as exc:
+        if exc.errno != errno.EPIPE:
+            raise
 
 if __name__ == '__main__':
     main()
