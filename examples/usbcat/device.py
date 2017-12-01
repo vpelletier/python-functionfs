@@ -27,6 +27,7 @@ import libaio
 
 # More than one, so we may process one while kernel fills the other.
 PENDING_READ_COUNT = 2
+MAX_PENDING_WRITE_COUNT = 10
 # Large-ish buffer, to tolerate bursts without becoming a context switch storm.
 BUF_SIZE = 1024 * 1024
 
@@ -35,8 +36,10 @@ trace = functools.partial(print, file=sys.stderr)
 class USBCat(functionfs.Function):
     _enabled = False
 
-    def __init__(self, path, writer):
-        self._aio_context = libaio.AIOContext(PENDING_READ_COUNT)
+    def __init__(self, path, writer, onCanSend, onCannotSend):
+        self._aio_context = libaio.AIOContext(
+            PENDING_READ_COUNT + MAX_PENDING_WRITE_COUNT,
+        )
         self.eventfd = eventfd = libaio.EventFD()
         self._writer = writer
         fs_list, hs_list, ss_list = functionfs.getInterfaceInAllSpeeds(
@@ -81,7 +84,10 @@ class USBCat(functionfs.Function):
             )
             for _ in xrange(PENDING_READ_COUNT)
         ]
-        self.write = self.getEndpoint(1).write
+        self._aio_send_block_list = []
+        self._real_onCanSend = onCanSend
+        self._real_onCannotSend = onCannotSend
+        self._need_resume = False
 
     def close(self):
         self._disable()
@@ -112,6 +118,7 @@ class USBCat(functionfs.Function):
         trace('onEnable')
         self._disable()
         self._aio_context.submit(self._aio_recv_block_list)
+        self._real_onCanSend()
         self._enabled = True
 
     def onDisable(self):
@@ -124,6 +131,7 @@ class USBCat(functionfs.Function):
         Endpoint do not work anymore, so cancel AIO operation blocks.
         """
         if self._enabled:
+            self._real_onCannotSend()
             for block in self._aio_recv_block_list:
                 try:
                     self._aio_context.cancel(block)
@@ -131,6 +139,7 @@ class USBCat(functionfs.Function):
                     trace(
                         'cancelling %r raised: %s' % (block, exc),
                     )
+            self._aio_context.getEvents(min_nr=None)
             self._enabled = False
 
     def onAIOCompletion(self):
@@ -152,6 +161,40 @@ class USBCat(functionfs.Function):
             trace('aio read completion received', res, 'bytes')
             self._writer(block.buffer_list[0][:res])
 
+    def _onCanSend(self, block, res, res2):
+        if res < 0:
+            trace('aio write completion error:', -res)
+        else:
+            trace('aio write completion sent', res, 'bytes')
+        self._aio_send_block_list.remove(block)
+        if self._need_resume:
+            trace('send queue has room, resume sending')
+            self._real_onCanSend()
+            self._need_resume = False
+
+    def _onCannotSend(self):
+        trace('send queue full, pause sending')
+        self._real_onCannotSend()
+        self._need_resume = True
+
+    def write(self, value):
+        """
+        Queue write in kernel.
+        value (bytes)
+            Value to send.
+        """
+        aio_block = libaio.AIOBlock(
+            libaio.AIOBLOCK_MODE_WRITE,
+            self.getEndpoint(1),
+            [bytearray(value)],
+            0,
+            self.eventfd,
+            self._onCanSend,
+        )
+        self._aio_send_block_list.append(aio_block)
+        self._aio_context.submit([aio_block])
+        if len(self._aio_send_block_list) == MAX_PENDING_WRITE_COUNT:
+            self._onCannotSend()
 
 def main(path):
     epoll = select.epoll(3)
@@ -159,7 +202,9 @@ def main(path):
         buf = sys.stdin.read(BUF_SIZE)
         trace('sending', len(buf), 'bytes')
         function.write(buf)
-    event_dispatcher_dict = {}
+    event_dispatcher_dict = {
+        sys.stdin.fileno(): sender,
+    }
     def register(file_object, handler):
         epoll.register(file_object, select.EPOLLIN)
         event_dispatcher_dict[file_object.fileno()] = handler
@@ -173,6 +218,8 @@ def main(path):
     with USBCat(
         path,
         sys.stdout.write,
+        onCanSend=lambda: epoll.register(sys.stdin, select.EPOLLIN),
+        onCannotSend=lambda: epoll.unregister(sys.stdin),
     ) as function:
         fcntl.fcntl(
             sys.stdin,
@@ -181,7 +228,6 @@ def main(path):
         )
         register(function.eventfd, function.onAIOCompletion)
         register(function.ep0, function.processEvents)
-        register(sys.stdin, sender)
         try:
             while True:
                 for fd, event in noIntrEpoll():
