@@ -211,6 +211,12 @@ def main(path):
         buf = sys.stdin.read(BUF_SIZE)
         trace('sending', len(buf), 'bytes')
         function.write(buf)
+    def stopSender():
+        try:
+            epoll.unregister(sys.stdin)
+        except IOError as exc:
+            if exc.errno != errno.ENOENT:
+                raise
     event_dispatcher_dict = {
         sys.stdin.fileno(): sender,
     }
@@ -221,7 +227,7 @@ def main(path):
         path,
         sys.stdout.write,
         onCanSend=lambda: epoll.register(sys.stdin, select.EPOLLIN),
-        onCannotSend=lambda: epoll.unregister(sys.stdin),
+        onCannotSend=stopSender,
     ) as function:
         fcntl.fcntl(
             sys.stdin,
