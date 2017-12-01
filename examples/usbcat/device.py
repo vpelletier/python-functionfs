@@ -154,6 +154,22 @@ class USBCat(functionfs.Function):
 
 
 def main(path):
+    epoll = select.epoll(3)
+    def sender():
+        buf = sys.stdin.read(BUF_SIZE)
+        trace('sending', len(buf), 'bytes')
+        function.write(buf)
+    event_dispatcher_dict = {}
+    def register(file_object, handler):
+        epoll.register(file_object, select.EPOLLIN)
+        event_dispatcher_dict[file_object.fileno()] = handler
+    def noIntrEpoll():
+        while True:
+            try:
+                return epoll.poll()
+            except IOError, exc:
+                if exc.errno != errno.EINTR:
+                    raise
     with USBCat(
         path,
         sys.stdout.write,
@@ -163,22 +179,6 @@ def main(path):
             fcntl.F_SETFL,
             fcntl.fcntl(sys.stdin, fcntl.F_GETFL) | os.O_NONBLOCK,
         )
-        def sender():
-            buf = sys.stdin.read(BUF_SIZE)
-            trace('sending', len(buf), 'bytes')
-            function.write(buf)
-        epoll = select.epoll(3)
-        event_dispatcher_dict = {}
-        def register(file_object, handler):
-            epoll.register(file_object, select.EPOLLIN)
-            event_dispatcher_dict[file_object.fileno()] = handler
-        def noIntrEpoll():
-            while True:
-                try:
-                    return epoll.poll()
-                except IOError, exc:
-                    if exc.errno != errno.EINTR:
-                        raise
         register(function.eventfd, function.onAIOCompletion)
         register(function.ep0, function.processEvents)
         register(sys.stdin, sender)
