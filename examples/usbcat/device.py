@@ -132,13 +132,14 @@ class USBCat(functionfs.Function):
         """
         if self._enabled:
             self._real_onCannotSend()
-            for block in self._aio_recv_block_list:
+            for block in self._aio_recv_block_list + self._aio_send_block_list:
                 try:
                     self._aio_context.cancel(block)
                 except OSError as exc:
                     trace(
                         'cancelling %r raised: %s' % (block, exc),
                     )
+            del self._aio_send_block_list[:]
             self._aio_context.getEvents(min_nr=None)
             self._enabled = False
 
