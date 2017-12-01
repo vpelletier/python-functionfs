@@ -77,6 +77,7 @@ class USBCat(functionfs.Function):
                 [bytearray(BUF_SIZE)],
                 0,
                 eventfd,
+                self._onReceived,
             )
             for _ in xrange(PENDING_READ_COUNT)
         ]
@@ -132,23 +133,25 @@ class USBCat(functionfs.Function):
                     )
             self._enabled = False
 
-    def readAIOCompletion(self):
+    def onAIOCompletion(self):
         """
         Call when eventfd notified events are available.
         """
         event_count = self.eventfd.read()
         trace('eventfd reports %i events' % event_count)
-        block_list = []
-        for block, res, _ in self._aio_context.getEvents(event_count):
-            if res != -errno.ESHUTDOWN:
-                block_list.append(block)
-            if res < 0:
-                trace('aio completion error:', -res)
-            else:
-                trace('aio completion received', res, 'bytes')
-                buf, = block.buffer_list
-                self._writer(buf[:res])
-        self._aio_context.submit(block_list)
+        # XXX: when requesting the exact number of event, it sometimes blocks
+        self._aio_context.getEvents()
+
+    def _onReceived(self, block, res, res2):
+        if res != -errno.ESHUTDOWN:
+            # XXX: is it good to resubmit on any other error ?
+            self._aio_context.submit([block])
+        if res < 0:
+            trace('aio read completion error:', -res)
+        else:
+            trace('aio read completion received', res, 'bytes')
+            self._writer(block.buffer_list[0][:res])
+
 
 def main(path):
     with USBCat(
@@ -176,7 +179,7 @@ def main(path):
                 except IOError, exc:
                     if exc.errno != errno.EINTR:
                         raise
-        register(function.eventfd, function.readAIOCompletion)
+        register(function.eventfd, function.onAIOCompletion)
         register(function.ep0, function.processEvents)
         register(sys.stdin, sender)
         try:
