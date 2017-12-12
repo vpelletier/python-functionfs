@@ -487,7 +487,7 @@ class Endpoint0File(EndpointFileBase):
             if request_type & ch9.USB_DIR_IN:
                 self.read(0)
             else:
-                self.write('')
+                self.write(b'')
         except IOError as exc:
             if exc.errno != errno.EL2HLT:
                 raise
@@ -606,7 +606,7 @@ class EndpointOUTFile(EndpointFile):
         return False
 
     def _halt(self):
-        super(EndpointOUTFile, self).write('')
+        super(EndpointOUTFile, self).write(b'')
 
 _INFINITY = itertools.repeat(None)
 _ONCE = (None, )
@@ -848,7 +848,7 @@ class Function(object):
             if request == ch9.USB_REQ_GET_STATUS:
                 if is_in and length == 2:
                     if recipient == ch9.USB_RECIP_INTERFACE:
-                        self.ep0.write('\x00\x00')
+                        self.ep0.write(b'\x00\x00')
                         return
                     elif recipient == ch9.USB_RECIP_ENDPOINT:
                         self.ep0.write(
