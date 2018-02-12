@@ -231,7 +231,7 @@ def getOSDesc(interface, ext_list):
         ext_type, = {type(ext_list) for x in ext_list}
     except ValueError:
         raise TypeError('Extensions of a single type are required.')
-    if isinstance(ext_type, OSExtCompatDesc):
+    if issubclass(ext_type, OSExtCompatDesc):
         wIndex = 4
         kw = {
             'b': {
@@ -239,7 +239,7 @@ def getOSDesc(interface, ext_list):
                 'Reserved': 0,
             },
         }
-    elif isinstance(ext_type, OSExtPropDescHead):
+    elif issubclass(ext_type, OSExtPropDescHead):
         wIndex = 5
         kw = {
             'wCount': len(ext_list),
