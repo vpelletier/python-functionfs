@@ -248,7 +248,7 @@ def getOSDesc(interface, ext_list):
         raise TypeError('Extensions of unexpected type')
     klass = type(
         'OSDesc',
-        OSDescHeader,
+        (OSDescHeader, ),
         {
             '_fields_': [
                 ('ext_list', ext_type * len(ext_list)),
@@ -278,7 +278,7 @@ def getOSExtPropDesc(data_type, name, value):
     """
     klass = type(
         'OSExtPropDesc',
-        OSExtPropDescHead,
+        (OSExtPropDescHead, ),
         {
             '_fields_': [
                 ('bPropertyName', ctypes.c_char * len(name)),
