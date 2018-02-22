@@ -228,7 +228,7 @@ def getOSDesc(interface, ext_list):
         List of instances of extended descriptors.
     """
     try:
-        ext_type, = {type(ext_list) for x in ext_list}
+        ext_type, = {type(x) for x in ext_list}
     except ValueError:
         raise TypeError('Extensions of a single type are required.')
     if issubclass(ext_type, OSExtCompatDesc):
