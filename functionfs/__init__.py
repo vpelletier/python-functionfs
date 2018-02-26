@@ -61,6 +61,7 @@ from .functionfs import (
     DescsHeadV2,
     DescsHead,
     OSDescHeader,
+    OSDescHeaderBCount,
     OSExtCompatDesc,
     OSExtPropDescHead,
     StringsHead,
@@ -234,10 +235,10 @@ def getOSDesc(interface, ext_list):
     if issubclass(ext_type, OSExtCompatDesc):
         wIndex = 4
         kw = {
-            'b': {
-                'bCount': len(ext_list),
-                'Reserved': 0,
-            },
+            'b': OSDescHeaderBCount(
+                bCount=len(ext_list),
+                Reserved=0,
+            ),
         }
     elif issubclass(ext_type, OSExtPropDescHead):
         wIndex = 5
