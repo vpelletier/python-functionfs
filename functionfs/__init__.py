@@ -247,12 +247,13 @@ def getOSDesc(interface, ext_list):
         }
     else:
         raise TypeError('Extensions of unexpected type')
+    ext_list_type = ext_type * len(ext_list)
     klass = type(
         'OSDesc',
         (OSDescHeader, ),
         {
             '_fields_': [
-                ('ext_list', ext_type * len(ext_list)),
+                ('ext_list', ext_list_type),
             ],
         },
     )
@@ -261,7 +262,7 @@ def getOSDesc(interface, ext_list):
         dwLength=ctypes.sizeof(klass),
         bcdVersion=1,
         wIndex=wIndex,
-        ext_list=ext_list,
+        ext_list=ext_list_type(*ext_list),
         **kw
     )
 
