@@ -111,12 +111,12 @@ class USBCat(functionfs.Function):
     def onUnbind(self):
         """
         Kernel may unbind us without calling disable.
-        Still, it does cancel all pending IOs before signaling unbinding, so
-        it is sufficient to mark us as disabled.
+        It does cancel all pending IOs before signaling unbinding, so it would
+        be sufficient to mark us as disabled... Except we need to call
+        onCannotSend ourselves.
         """
         trace('onUnbind')
-        # XXX: wait for AIO blocks to actually terminate ?
-        self._enabled = False
+        self._disable()
 
     def onEnable(self):
         """
@@ -140,6 +140,7 @@ class USBCat(functionfs.Function):
         """
         if self._enabled:
             self._real_onCannotSend()
+            has_cancelled = 0
             for block in self._aio_recv_block_list + self._aio_send_block_list:
                 try:
                     self._aio_context.cancel(block)
@@ -147,8 +148,10 @@ class USBCat(functionfs.Function):
                     trace(
                         'cancelling %r raised: %s' % (block, exc),
                     )
-            del self._aio_send_block_list[:]
-            noIntr(functools.partial(self._aio_context.getEvents, min_nr=None))
+                else:
+                    has_cancelled += 1
+            if has_cancelled:
+                noIntr(functools.partial(self._aio_context.getEvents, min_nr=None))
             self._enabled = False
 
     def onAIOCompletion(self):
