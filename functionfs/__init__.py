@@ -54,6 +54,11 @@ from .ch9 import (
     USBDebugDescriptor,
     USBInterfaceAssocDescriptor,
 )
+from . import hid
+from .hid import (
+    getUSBHIDDescriptorClass,
+    USB_INTERFACE_PROTOCOL_NONE,
+)
 from .functionfs import (
     DESCRIPTORS_MAGIC, STRINGS_MAGIC, DESCRIPTORS_MAGIC_V2,
     FLAGS,
@@ -83,6 +88,7 @@ from .functionfs import (
 
 __all__ = (
     'ch9',
+    'hid',
     'Function',
 
     # XXX: Not very pythonic...
@@ -100,6 +106,7 @@ __all__ = (
     'USBDebugDescriptor',
     'USBInterfaceAssocDescriptor',
     'OSExtCompatDesc',
+    'getUSBHIDDescriptorClass',
 )
 
 _MAX_PACKET_SIZE_DICT = {
@@ -408,7 +415,7 @@ def getDescsV2(flags, fs_list=(), hs_list=(), ss_list=(), os_list=(), eventfd=No
             USBOTGDescriptor
             USBOTG20Descriptor
             USBInterfaceAssocDescriptor
-            TODO: HID
+            USBHIDDescriptor, as provided by getUSBHIDDescriptorClass
             All (non-empty) lists must define the same number of interfaces
             and endpoints, and endpoint descriptors must be given in the same
             order, bEndpointAddress-wise.
@@ -1303,3 +1310,302 @@ class Function(object):
         May be overridden in subclass.
         """
         pass
+
+class HIDFunction(Function):
+    """
+    Implement HID protocol.
+    """
+    hid_class_request_dict = {
+        # (USB_DIR_IN ?, bRequest) -> method id
+        (True, hid.HID_REQ_GET_REPORT): 'getHIDReport',
+        (True, hid.HID_REQ_GET_IDLE): 'getHIDIdle',
+        (True, hid.HID_REQ_GET_PROTOCOL): 'getHIDProtocol',
+        (False, hid.HID_REQ_SET_REPORT): 'setHIDReport',
+        (False, hid.HID_REQ_SET_IDLE): 'setHIDIdle',
+        (False, hid.HID_REQ_SET_PROTOCOL): 'setHIDProtocol',
+    }
+
+    def __init__(
+        self,
+        path,
+
+        report_descriptor,
+        descriptor_dict={},
+
+        fs_list=(), hs_list=(), ss_list=(),
+        os_list=(),
+        lang_dict={},
+        all_ctrl_recip=False, config0_setup=False,
+
+        is_boot_device=False,
+        protocol=USB_INTERFACE_PROTOCOL_NONE,
+        country_code=0,
+        in_report_max_length=0,
+        out_report_max_length=0,
+        full_speed_interval=64,
+        high_speed_interval=10,
+    ):
+        """
+        path, ss_list, os_list, lang_dict, all_ctrl_recip, config0_setup:
+            See Function.__init__ .
+        {fs,hs}_list:
+            If provided, these values are used instead of automatically
+            generating minimal valid descriptors.
+
+        report_descriptor (bytes)
+            The report descriptor. Describes the structure of all reports
+            the interface may generate.
+        hid_descriptor_list (dict)
+            keys (int)
+                hid.HID_DT_* values
+                Note: hid.HID_DT_REPORT descriptor should rather be provided
+                using report_descriptor argument (see above).
+            values (list of bytes)
+                List of descriptors of this type.
+                Note for hid.HID_DT_PHYSICAL: descriptor 0 (see HID 1.11,
+                6.2.3) will not be automatically generated.
+
+        All other arguments are for automated descriptor generation, and are
+        ignored when fs_list and hs_list are non-empty:
+        is_boot_device (bool)
+            Whether this interface implements boot device protocol.
+        protocol (USB_INTERFACE_PROTOCOL_*)
+            Should be provided when is_boot_device is True.
+        country_code (int)
+            The country code this interface is localised for.
+            See table in HID 1.11 specification, 6.2.1 .
+        in_report_max_length (int)
+            Must be greater than zero to auto-generate a valid descriptor.
+            The length of the longest report this interface will produce,
+            in bytes.
+            If >64 bytes, the devide will be high-speed only.
+        out_report_max_length (int)
+            If zero, this interface will not have an interrupt OUT endpoint
+            (only interrupt IN).
+            Otherwise, this is the length of the longest report this interface
+            can receive, in bytes.
+            If >64 bytes, the devide will be high-speed only.
+        full_speed_interval (int)
+            Interval for polling endpoint for data transfers.
+            In milliseconds units, 1 to 255.
+        high_speed_interval (int)
+            Interval for polling endpoint for data transfers.
+            In 2 ** (n - 1) * 125 microseconds units, 1 to 16:
+             1:     125 microseconds
+             2:     250
+             3:     500
+             4:    1000
+             5:    2000
+             6:    4000
+             7:    8000
+             8:   16000
+             9:   32000
+            10:   64000
+            11:  128000
+            12:  256000
+            13:  512000
+            14: 1024000
+            15: 2048000
+            16: 4096000
+        """
+        descriptor_count = 1 + sum(
+            (len(x) for x in descriptor_dict.itervalues()),
+        )
+        def buildDescriptor(max_packet, interval):
+            if (
+                in_report_max_length > max_packet or
+                out_report_max_length > max_packet
+            ):
+                return ()
+            tail = (hid.USBHIDDescriptorTail * descriptor_count)()
+            tail[0].bDescriptorType = hid.HID_DT_REPORT
+            tail[0].wDescriptorLength = len(report_descriptor)
+            index = 1
+            for descriptor_type, descriptor_list in descriptor_dict.iteritems():
+                for descriptor in descriptor_list:
+                    tail[index].bDescriptorType = descriptor_type
+                    tail[index].wDescriptorLength = len(descriptor)
+                    index += 1
+            result = [
+                getDescriptor(
+                    USBInterfaceDescriptor,
+                    bNumEndpoints=2 if out_report_max_length else 1,
+                    bInterfaceClass=ch9.USB_CLASS_HID,
+                    bInterfaceSubClass=(
+                        hid.USB_INTERFACE_SUBCLASS_BOOT
+                        if is_boot_device else
+                        hid.USB_INTERFACE_SUBCLASS_NONE
+                    ),
+                    bInterfaceProtocol=protocol,
+                ),
+                getDescriptor(
+                    hid.getUSBHIDDescriptorClass(descriptor_count),
+                    bcdHID=0x0111, # 1.11
+                    bCountryCode=country_code,
+                    bNumDescriptors=descriptor_count,
+                    tail=tail,
+                ),
+                getDescriptor(
+                    USBEndpointDescriptorNoAudio,
+                    bEndpointAddress=1 | ch9.USB_DIR_IN,
+                    bmAttributes=ch9.USB_ENDPOINT_XFER_INT,
+                    wMaxPacketSize=in_report_max_length,
+                    bInterval=interval,
+                ),
+            ]
+            if out_report_max_length:
+                result.append(
+                    getDescriptor(
+                        USBEndpointDescriptorNoAudio,
+                        bEndpointAddress=2 | ch9.USB_DIR_OUT,
+                        bmAttributes=ch9.USB_ENDPOINT_XFER_INT,
+                        wMaxPacketSize=out_report_max_length,
+                        # XXX: what is the meaning of bInterval on INT OUT ?
+                        bInterval=interval,
+                    ),
+                )
+            return result
+        super(HIDFunction, self).__init__(
+            path,
+            fs_list=fs_list or buildDescriptor(
+                _MAX_PACKET_SIZE_DICT[ch9.USB_ENDPOINT_XFER_INT][0],
+                full_speed_interval,
+            ),
+            hs_list=hs_list or buildDescriptor(
+                _MAX_PACKET_SIZE_DICT[ch9.USB_ENDPOINT_XFER_INT][1],
+                high_speed_interval,
+            ),
+            ss_list=ss_list,
+            os_list=os_list,
+            lang_dict=lang_dict,
+            all_ctrl_recip=all_ctrl_recip,
+            config0_setup=config0_setup,
+        )
+        self.hid_descritptor_dict = hid_descritptor_dict = {
+            hid.HID_DT_REPORT: [report_descriptor],
+        }
+        for descriptor_type, descriptor_list in descriptor_dict.iteritems():
+            hid_descritptor_dict.setdefault(
+                descriptor_type,
+                [],
+            ).extend(descriptor_list)
+
+    def onSetup(self, request_type, request, value, index, length):
+        if (request_type & ch9.USB_RECIP_MASK) == ch9.USB_RECIP_INTERFACE:
+            is_in = (request_type & ch9.USB_DIR_IN) == ch9.USB_DIR_IN
+            if (request_type & ch9.USB_TYPE_MASK) == ch9.USB_TYPE_STANDARD:
+                if request == ch9.USB_REQ_GET_DESCRIPTOR and is_in:
+                    descriptor_list = self.hid_descritptor_dict.get(
+                        value >> 8, # Descriptor Type
+                        (),
+                    )
+                    # HID 1.11, 7.1.1:
+                    #   A device will return the last descriptor set to
+                    #   requests with an index greater than the last number
+                    #   defined in the HID descriptor.
+                    # Why not just stall to signal to host that it's requesting
+                    # garbage ? Oh well.
+                    descriptor_index = min(
+                        value & 0xff,
+                        len(descriptor_list) - 1,
+                    )
+                    # descriptor_index == -1 if descriptor_list is empty for
+                    # give descriptor type
+                    if descriptor_index >= 0:
+                        self.ep0.write(
+                            descriptor_list[descriptor_index][:length],
+                        )
+                        return
+                elif request == ch9.USB_REQ_SET_DESCRIPTOR and not is_in:
+                    self.setInterfaceDescriptor(value, index, length)
+                    return
+            elif (request_type & ch9.USB_TYPE_MASK) == ch9.USB_TYPE_CLASS:
+                try:
+                    method_id = self.hid_class_request_dict[(is_in, request)]
+                except KeyError:
+                    pass
+                else:
+                    getattr(self, method_id)(value, index, length)
+                    return
+        # Handle basic standard requests, or halt.
+        super(HIDFunction, self).onSetup(
+            request_type,
+            request,
+            value,
+            index,
+            length,
+        )
+
+    # pylint: disable=unused-argument
+    def setInterfaceDescriptor(self, value, index, length):
+        """
+        May be overriden and implemented in subclass.
+
+        Return if request was handled,
+        Call method on superclass (this class) otherwise so error is signaled
+        to host.
+        """
+        self.ep0.halt(ch9.USB_DIR_IN)
+
+    def getHIDReport(self, value, index, length):
+        """
+        Must be overridden and implemented in subclass.
+
+        Return if request was handled,
+        Call method on superclass (this class) otherwise so error is signaled
+        to host.
+        """
+        self.ep0.halt(ch9.USB_DIR_IN)
+
+    def getHIDIdle(self, value, index, length):
+        """
+        May be overridden and implemented in subclass.
+
+        Return if request was handled,
+        Call method on superclass (this class) otherwise so error is signaled
+        to host.
+        """
+        self.ep0.halt(ch9.USB_DIR_IN)
+
+    def getHIDProtocol(self, value, index, length):
+        """
+        May be overridden and implemented in subclass.
+        Mandatory for boot devices.
+
+        Return if request was handled,
+        Call method on superclass (this class) otherwise so error is signaled
+        to host.
+        """
+        self.ep0.halt(ch9.USB_DIR_IN)
+
+    def setHIDReport(self, value, index, length):
+        """
+        May be overridden and implemented in subclass.
+
+        Return if request was handled,
+        Call method on superclass (this class) otherwise so error is signaled
+        to host.
+        """
+        self.ep0.halt(ch9.USB_DIR_OUT)
+
+    def setHIDIdle(self, value, index, length):
+        """
+        May be overridden and implemented in subclass.
+
+        Return if request was handled,
+        Call method on superclass (this class) otherwise so error is signaled
+        to host.
+        """
+        self.ep0.halt(ch9.USB_DIR_OUT)
+
+    def setHIDProtocol(self, value, index, length):
+        """
+        May be overridden and implemented in subclass.
+        Mandatory for boot devices.
+
+        Return if request was handled,
+        Call method on superclass (this class) otherwise so error is signaled
+        to host.
+        """
+        self.ep0.halt(ch9.USB_DIR_OUT)
+    # pylint: enable=unused-argument
