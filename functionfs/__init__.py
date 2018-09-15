@@ -658,15 +658,13 @@ class Function(object):
             flags |= ALL_CTRL_RECIP
         if config0_setup:
             flags |= CONFIG0_SETUP
-        desc = getDescsV2(
+        ep0.write(serialise(getDescsV2(
             flags,
             fs_list=fs_list,
             hs_list=hs_list,
             ss_list=ss_list,
             os_list=os_list,
-        )
-        desc_s = serialise(desc)
-        ep0.write(desc_s)
+        )))
         # TODO: try v1 on failure ?
         strings = getStrings(lang_dict)
         ep0.write(serialise(strings))
