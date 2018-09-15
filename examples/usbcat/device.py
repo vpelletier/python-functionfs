@@ -160,7 +160,7 @@ class USBCat(functionfs.Function):
         """
         event_count = self.eventfd.read()
         trace('eventfd reports %i events' % event_count)
-        # Event though eventfd signaled activity, even though it may give us
+        # Even though eventfd signaled activity, even though it may give us
         # some number of pending events, some events seem to have been already
         # processed (maybe during io_cancel call ?).
         # So do not trust eventfd value, and do not even trust that there must
