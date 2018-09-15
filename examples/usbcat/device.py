@@ -83,12 +83,12 @@ class USBCat(functionfs.Function):
         to_host = self.getEndpoint(2)
         self._aio_recv_block_list = [
             libaio.AIOBlock(
-                libaio.AIOBLOCK_MODE_READ,
-                to_host,
-                [bytearray(BUF_SIZE)],
-                0,
-                eventfd,
-                self._onReceived,
+                mode=libaio.AIOBLOCK_MODE_READ,
+                target_file=to_host,
+                buffer_list=[bytearray(BUF_SIZE)],
+                offset=0,
+                eventfd=eventfd,
+                onCompletion=self._onReceived,
             )
             for _ in xrange(PENDING_READ_COUNT)
         ]
@@ -200,12 +200,12 @@ class USBCat(functionfs.Function):
             Value to send.
         """
         aio_block = libaio.AIOBlock(
-            libaio.AIOBLOCK_MODE_WRITE,
-            self.getEndpoint(1),
-            [bytearray(value)],
-            0,
-            self.eventfd,
-            self._onCanSend,
+            mode=libaio.AIOBLOCK_MODE_WRITE,
+            target_file=self.getEndpoint(1),
+            buffer_list=[bytearray(value)],
+            offset=0,
+            eventfd=self.eventfd,
+            onCompletion=self._onCanSend,
         )
         self._aio_send_block_list.append(aio_block)
         self._aio_context.submit([aio_block])
