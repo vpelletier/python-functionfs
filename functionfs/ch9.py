@@ -258,27 +258,27 @@ USB_CLASS_VENDOR_SPEC = 0xff
 USB_SUBCLASS_VENDOR_SPEC = 0xff
 
 class USBConfigDescriptor(USBDescriptorHeader):
-        """
-        USB_DT_CONFIG: Configuration descriptor information.
-        """
-        _bDescriptorType = USB_DT_CONFIG
-        _fields_ = [
-            ('wTotalLength', le16),
-            ('bNumInterfaces', u8),
-            ('bConfigurationValue', u8),
-            ('iConfiguration', u8),
-            ('bmAttributes', u8),
-            ('bMaxPower', u8),
-        ]
+    """
+    USB_DT_CONFIG: Configuration descriptor information.
+    """
+    _bDescriptorType = USB_DT_CONFIG
+    _fields_ = [
+        ('wTotalLength', le16),
+        ('bNumInterfaces', u8),
+        ('bConfigurationValue', u8),
+        ('iConfiguration', u8),
+        ('bmAttributes', u8),
+        ('bMaxPower', u8),
+    ]
 
 class USBOtherSpeedConfig(USBConfigDescriptor):
-        """
-        USB_DT_OTHER_SPEED_CONFIG:  Highspeed-capable devices can look
-        different depending on what speed they're currently running.  Only
-        devices with a USB_DT_DEVICE_QUALIFIER have any OTHER_SPEED_CONFIG
-        descriptors.
-        """
-        _bDescriptorType = USB_DT_OTHER_SPEED_CONFIG
+    """
+    USB_DT_OTHER_SPEED_CONFIG:  Highspeed-capable devices can look
+    different depending on what speed they're currently running.  Only
+    devices with a USB_DT_DEVICE_QUALIFIER have any OTHER_SPEED_CONFIG
+    descriptors.
+    """
+    _bDescriptorType = USB_DT_OTHER_SPEED_CONFIG
 
 USB_DT_CONFIG_SIZE = 9
 assert ctypes.sizeof(USBOtherSpeedConfig) == USB_DT_CONFIG_SIZE
@@ -290,16 +290,16 @@ USB_CONFIG_ATT_WAKEUP = (1 << 5) # can wakeup
 USB_CONFIG_ATT_BATTERY = (1 << 4) # battery powered
 
 class USBStringDescriptor(USBConfigDescriptor):
-        """
-        USB_DT_STRING: String descriptor
+    """
+    USB_DT_STRING: String descriptor
 
-        note that "string" zero is special, it holds language codes that
-        the device supports, not Unicode characters.
-        """
-        _bDescriptorType = USB_DT_STRING
-        _fields_ = [
-            ('wData', le16), # UTF-16LE encoded
-        ]
+    note that "string" zero is special, it holds language codes that
+    the device supports, not Unicode characters.
+    """
+    _bDescriptorType = USB_DT_STRING
+    _fields_ = [
+        ('wData', le16), # UTF-16LE encoded
+    ]
 
 class USBInterfaceDescriptor(USBDescriptorHeader):
     """
