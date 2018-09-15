@@ -114,7 +114,7 @@ _EMPTY_DICT = {} # For internal ** falback usage
 def getInterfaceInAllSpeeds(interface, endpoint_list):
     """
     Produce similar fs, hs and ss interface and endpoints descriptors.
-    Should be useful for devices desiring to work in all 3 speeds with maimum
+    Should be useful for devices desiring to work in all 3 speeds with maximum
     endpoint wMaxPacketSize. Reduces data duplication from descriptor
     declarations.
     Not intended to cover fancy combinations.
