@@ -52,12 +52,6 @@ from .ch9 import (
 from .functionfs import (
     DESCRIPTORS_MAGIC, STRINGS_MAGIC, DESCRIPTORS_MAGIC_V2,
     FLAGS,
-    HAS_FS_DESC,
-    HAS_HS_DESC,
-    HAS_SS_DESC,
-    HAS_MS_OS_DESC,
-    ALL_CTRL_RECIP,
-    CONFIG0_SETUP,
     DescsHeadV2,
     DescsHead,
     OSDescHeader,
@@ -66,10 +60,20 @@ from .functionfs import (
     OSExtPropDescHead,
     StringsHead,
     StringBase,
-    BIND, UNBIND, ENABLE, DISABLE, SETUP, SUSPEND, RESUME,
     Event,
     FIFO_STATUS, FIFO_FLUSH, CLEAR_HALT, INTERFACE_REVMAP, ENDPOINT_REVMAP, ENDPOINT_DESC,
 )
+# pylint: disable=no-name-in-module
+from .functionfs import (
+    HAS_FS_DESC,
+    HAS_HS_DESC,
+    HAS_SS_DESC,
+    HAS_MS_OS_DESC,
+    ALL_CTRL_RECIP,
+    CONFIG0_SETUP,
+    BIND, UNBIND, ENABLE, DISABLE, SETUP, SUSPEND, RESUME,
+)
+# pylint: enable=no-name-in-module
 
 __all__ = (
     'ch9',
@@ -219,7 +223,9 @@ def getDescriptor(klass, **kw):
     # XXX: not very pythonic...
     return klass(
         bLength=ctypes.sizeof(klass),
+        # pylint: disable=protected-access
         bDescriptorType=klass._bDescriptorType,
+        # pylint: enable=protected-access
         **kw
     )
 
@@ -301,31 +307,31 @@ def getOSExtPropDesc(data_type, name, value):
         bProperty=value,
     )
 
-def getDescs(*args, **kw):
-    """
-    Return a legacy format FunctionFS suitable for serialisation.
-    Deprecated as of 3.14 .
-
-    NOT IMPLEMENTED
-    """
-    warnings.warn(
-        DeprecationWarning,
-        'Legacy format, deprecated as of 3.14.',
-    )
-    raise NotImplementedError('TODO')
-    klass = type(
-        'Descs',
-        (DescsHead, ),
-        {
-            'fs_descrs': None, # TODO
-            'hs_descrs': None, # TODO
-        },
-    )
-    return klass(
-        magic=DESCRIPTORS_MAGIC,
-        length=ctypes.sizeof(klass),
-        **kw
-    )
+#def getDescs(*args, **kw):
+#    """
+#    Return a legacy format FunctionFS suitable for serialisation.
+#    Deprecated as of 3.14 .
+#
+#    NOT IMPLEMENTED
+#    """
+#    warnings.warn(
+#        DeprecationWarning,
+#        'Legacy format, deprecated as of 3.14.',
+#    )
+#    raise NotImplementedError('TODO')
+#    klass = type(
+#        'Descs',
+#        (DescsHead, ),
+#        {
+#            'fs_descrs': None, # TODO
+#            'hs_descrs': None, # TODO
+#        },
+#    )
+#    return klass(
+#        magic=DESCRIPTORS_MAGIC,
+#        length=ctypes.sizeof(klass),
+#        **kw
+#    )
 
 def getDescsV2(flags, fs_list=(), hs_list=(), ss_list=(), os_list=()):
     """
@@ -371,7 +377,7 @@ def getDescsV2(flags, fs_list=(), hs_list=(), ss_list=(), os_list=()):
                         ),
                     )
             descriptor_map = [
-                ('desc_%i' % x,  y)
+                ('desc_%i' % x, )
                 for x, y in enumerate(descriptor_list)
             ]
             flags |= flag
@@ -471,9 +477,21 @@ def getStrings(lang_dict):
     )
 
 def serialise(structure):
-    return (ctypes.c_char * ctypes.sizeof(structure)).from_address(ctypes.addressof(structure))
+    """
+    structure (ctypes.Structure)
+        The structure to serialise.
+
+    Returns a ctypes.c_char array.
+    Does not copy memory.
+    """
+    return (
+        ctypes.c_char * ctypes.sizeof(structure)
+    ).from_address(ctypes.addressof(structure))
 
 class EndpointFileBase(io.FileIO):
+    """
+    File object representing a endpoint. Abstract.
+    """
     def _ioctl(self, func, *args, **kw):
         result = fcntl.ioctl(self, func, *args, **kw)
         if result < 0:
@@ -508,7 +526,7 @@ class Endpoint0File(EndpointFileBase):
             return self._ioctl(INTERFACE_REVMAP, interface)
         except IOError as exc:
             if exc.errno == errno.EDOM:
-                return
+                return None
             raise
 
     # TODO: Add any standard IOCTL in usb_gadget_ops.ioctl ?
@@ -572,6 +590,9 @@ class EndpointFile(EndpointFileBase):
         self._halted = True
 
     def isHalted(self):
+        """
+        Whether endpoint is currently halted.
+        """
         return self._halted
 
 class EndpointINFile(EndpointFile):
@@ -579,7 +600,7 @@ class EndpointINFile(EndpointFile):
     Write-only endpoint file.
     """
     @staticmethod
-    def read(*args, **kw):
+    def read(*_, **__):
         """
         Always raises IOError.
         """
@@ -589,7 +610,11 @@ class EndpointINFile(EndpointFile):
     readlines = read
     readline = read
 
-    def readable(self):
+    @staticmethod
+    def readable():
+        """
+        Never readable.
+        """
         return False
 
     def _halt(self):
@@ -600,14 +625,18 @@ class EndpointOUTFile(EndpointFile):
     Read-only endpoint file.
     """
     @staticmethod
-    def write(*args, **kw):
+    def write(*_, **__):
         """
         Always raises IOError.
         """
         raise IOError('File not open for writing')
     writelines = write
 
-    def writable(self):
+    @staticmethod
+    def writable():
+        """
+        Never writable.
+        """
         return False
 
     def _halt(self):

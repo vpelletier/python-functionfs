@@ -13,6 +13,11 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
+"""
+Linux functionfs definitions.
+
+From linux/usb/functionfs.h .
+"""
 import ctypes
 import ioctl_opt
 from .common import u8, le16, le32, Enum
@@ -72,7 +77,7 @@ class DescsHeadV2(ctypes.LittleEndianStructure):
 class DescsHead(ctypes.LittleEndianStructure):
     """
     Legacy descriptors format (deprecated as of 3.14):
-    
+
     | off | name      | type         | description                          |
     |-----+-----------+--------------+--------------------------------------|
     |   0 | magic     | LE32         | FUNCTIONFS_DESCRIPTORS_MAGIC         |

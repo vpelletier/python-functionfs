@@ -1,0 +1,8 @@
+[MESSAGES CONTROL]
+disable=C0103,C0330,R0903,R0913,R0914,R0912
+# C0103 "Invalid name "%s" (should match %s)"
+# C0330 bad-continuation
+# R0903 too-few-public-methods
+# R0913 too-many-arguments
+# R0914 too-many-locals
+# R0912 too-many-branches
