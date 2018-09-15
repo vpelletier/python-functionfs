@@ -180,16 +180,19 @@ def getInterfaceInAllSpeeds(interface, endpoint_list):
             wMaxPacketSize=ss_max,
             **endpoint_kw
         ))
+        ss_companion_kw = endpoint.get('superspeed', _EMPTY_DICT)
         ss_list.append(getDescriptor(
             USBSSEPCompDescriptor,
-            **endpoint.get('superspeed', _EMPTY_DICT)
+            **ss_companion_kw
         ))
         ssp_iso_kw = endpoint.get('superspeed_iso', _EMPTY_DICT)
         if bool(ssp_iso_kw) != (
             endpoint_kw.get('bmAttributes', 0) &
             ch9.USB_ENDPOINT_XFERTYPE_MASK ==
             ch9.USB_ENDPOINT_XFER_ISOC and
-            bool(USB_SS_SSP_ISOC_COMP(ss_kw.get('bmAttributes', 0)))
+            bool(ch9.USB_SS_SSP_ISOC_COMP(
+                ss_companion_kw.get('bmAttributes', 0),
+            ))
         ):
             raise ValueError('Inconsistent isochronous companion')
         if ssp_iso_kw:
