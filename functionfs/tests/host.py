@@ -125,7 +125,7 @@ def main():
             if ep & 0xf0:
                 buf[0] = 0
             else:
-                for offset, _ in enumarate(buf):
+                for offset, _ in enumerate(buf):
                     buf[offset] = ep
             size[0] = 0
             for transfer in transfer_list:
