@@ -690,16 +690,23 @@ class Function(object):
             flags |= ALL_CTRL_RECIP
         if config0_setup:
             flags |= CONFIG0_SETUP
-        ep0.write(serialise(getDescsV2(
+        # Note: serialise does not prevent its argument from being freed and
+        # reallocated. Keep strong references to to-serialise values until
+        # after they get written.
+        desc = getDescsV2(
             flags,
             fs_list=fs_list,
             hs_list=hs_list,
             ss_list=ss_list,
             os_list=os_list,
-        )))
+        )
+        ep0.write(serialise(desc))
         # TODO: try v1 on failure ?
+        del desc
+        # Note: see above.
         strings = getStrings(lang_dict)
         ep0.write(serialise(strings))
+        del strings
         for descriptor in fs_list or hs_list or ss_list:
             if descriptor.bDescriptorType == ch9.USB_DT_ENDPOINT:
                 assert descriptor.bEndpointAddress not in ep_address_dict, (
