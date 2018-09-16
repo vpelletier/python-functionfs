@@ -377,7 +377,7 @@ def getDescsV2(flags, fs_list=(), hs_list=(), ss_list=(), os_list=()):
                         ),
                     )
             descriptor_map = [
-                ('desc_%i' % x, )
+                ('desc_%i' % x, y)
                 for x, y in enumerate(descriptor_list)
             ]
             flags |= flag
