@@ -877,7 +877,8 @@ class Function(object):
         - handles USB_REQ_SET_FEATURE(USB_ENDPOINT_HALT) on endpoints
         - halts on everything else
 
-        If this method raises anything, endpoint 0 is halted by its caller.
+        If this method raises anything, endpoint 0 is halted by its caller and
+        exception is let through.
 
         May be overridden in subclass.
         """
@@ -887,31 +888,60 @@ class Function(object):
             if request == ch9.USB_REQ_GET_STATUS:
                 if is_in and length == 2:
                     if recipient == ch9.USB_RECIP_INTERFACE:
-                        self.ep0.write(b'\x00\x00')
-                        return
+                        if value == 0:
+                            status = 0
+                            self.ep0.write(struct.pack('<H', status)[:length])
+                            return
                     elif recipient == ch9.USB_RECIP_ENDPOINT:
-                        self.ep0.write(
-                            struct.pack(
-                                'BB',
-                                0,
-                                1 if self.getEndpoint(index).isHalted() else 0,
-                            ),
-                        )
-                        return
+                        if value == 0:
+                            try:
+                                endpoint = self.getEndpoint(index)
+                            except IndexError:
+                                pass
+                            else:
+                                status = 0
+                                if endpoint.isHalted():
+                                    status |= 1 << 0
+                                self.ep0.write(
+                                    struct.pack('<H', status)[:length],
+                                )
+                                return
             elif request == ch9.USB_REQ_CLEAR_FEATURE:
                 if not is_in and length == 0:
                     if recipient == ch9.USB_RECIP_ENDPOINT:
                         if value == ch9.USB_ENDPOINT_HALT:
-                            self.getEndpoint(index).clearHalt()
-                            self.ep0.read(0)
-                            return
+                            try:
+                                endpoint = self.getEndpoint(index)
+                            except IndexError:
+                                pass
+                            else:
+                                endpoint.clearHalt()
+                                self.ep0.read(0)
+                                return
+                    if recipient == ch9.USB_RECIP_INTERFACE:
+                        if value == ch9.USB_INTRF_FUNC_SUSPEND:
+                            if self.function_remote_wakeup_capable:
+                                self.disableRemoteWakeup()
+                                self.ep0.read(0)
+                                return
             elif request == ch9.USB_REQ_SET_FEATURE:
                 if not is_in and length == 0:
                     if recipient == ch9.USB_RECIP_ENDPOINT:
                         if value == ch9.USB_ENDPOINT_HALT:
-                            self.getEndpoint(index).halt()
-                            self.ep0.read(0)
-                            return
+                            try:
+                                endpoint = self.getEndpoint(index)
+                            except IndexError:
+                                pass
+                            else:
+                                endpoint.halt()
+                                self.ep0.read(0)
+                                return
+                    if recipient == ch9.USB_RECIP_INTERFACE:
+                        if value == ch9.USB_INTRF_FUNC_SUSPEND:
+                            if self.function_remote_wakeup_capable:
+                                self.enableRemoteWakeup()
+                                self.ep0.read(0)
+                                return
         self.ep0.halt(request_type)
 
     def onSuspend(self):
