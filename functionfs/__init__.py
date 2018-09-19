@@ -648,9 +648,19 @@ _ONCE = (None, )
 class Function(object):
     """
     Pythonic class for interfacing with FunctionFS.
+
+    Properties available:
+        function_remote_wakeup_capable (bool)
+            Whether the function wishes to be allowed to wake host.
+        function_remote_wakeup (bool)
+            Whether host has allowed the function to wake it up.
+            Set and cleared by onSetup by calling enableRemoteWakeup and
+            disableRemoteWakeup, respectively.
     """
     _closed = False
     _ep_list = () # Avoids failing in __del__ when (subclass') __init__ fails.
+    function_remote_wakeup_capable = False
+    function_remote_wakeup = False
 
     def __init__(
         self,
@@ -851,12 +861,12 @@ class Function(object):
     def onEnable(self):
         """
         Called when FunctionFS signals the function was (re)enabled.
-        This may happen several times without onDisable being called, which
-        must reset the function to its default state.
+        This may happen several times without onDisable being called.
+        It must reset the function to its default state.
 
         May be overridden in subclass.
         """
-        pass
+        self.disableRemoteWakeup()
 
     def onDisable(self):
         """
@@ -866,6 +876,28 @@ class Function(object):
         May be overridden in subclass.
         """
         pass
+
+    def disableRemoteWakeup(self):
+        """
+        Called when host issues a clearFeature request of the "suspend" flag
+        on this interface.
+        Sets function_remote_wakeup property to False so subsequent getStatus
+        requests will return expected value.
+
+        May be overridden in subclass.
+        """
+        self.function_remote_wakeup = False
+
+    def enableRemoteWakeup(self):
+        """
+        Called when host issues a setFeature request of the "suspend" flag
+        on this interface.
+        Sets function_remote_wakeup property to True so subsequent getStatus
+        requests will return expected value.
+
+        May be overridden in subclass.
+        """
+        self.function_remote_wakeup = True
 
     def onSetup(self, request_type, request, value, index, length):
         """
@@ -890,6 +922,11 @@ class Function(object):
                     if recipient == ch9.USB_RECIP_INTERFACE:
                         if value == 0:
                             status = 0
+                            if index == 0:
+                                if self.function_remote_wakeup_capable:
+                                    status |= 1 << 0
+                                if self.function_remote_wakeup:
+                                    status |= 1 << 1
                             self.ep0.write(struct.pack('<H', status)[:length])
                             return
                     elif recipient == ch9.USB_RECIP_ENDPOINT:
