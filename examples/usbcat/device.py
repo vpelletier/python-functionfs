@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import print_function
+from collections import deque
 import errno
 import fcntl
 import functools
@@ -23,33 +24,53 @@ import select
 import sys
 import functionfs
 import functionfs.ch9
-import libaio
 
-# More than one, so we may process one while kernel fills the other.
-PENDING_READ_COUNT = 2
-MAX_PENDING_WRITE_COUNT = 10
 # Large-ish buffer, to tolerate bursts without becoming a context switch storm.
 BUF_SIZE = 1024 * 1024
 
 trace = functools.partial(print, file=sys.stderr)
 
-def noIntr(func):
-    while True:
-        try:
-            return func()
-        except (IOError, OSError) as exc:
-            if exc.errno != errno.EINTR:
-                raise
+class EndpointOUTFile(functionfs.EndpointOUTFile):
+    def __init__(self, writer, *args, **kw):
+        self.__writer = writer
+        super(EndpointOUTFile, self).__init__(*args, **kw)
+
+    def onComplete(self, data, status):
+        if data is None:
+            trace('aio read completion error:', -status)
+        else:
+            trace('aio read completion received', len(data), 'bytes')
+            self.__writer(data.tobytes())
+
+class EndpointINFile(functionfs.EndpointINFile):
+    def __init__(self, onCanSend, onCannotSend, *args, **kw):
+        self.__onCanSend = onCanSend
+        self.__onCannotSend = onCannotSend
+        self.__stranded_buffer_list_queue = deque()
+        super(EndpointINFile, self).__init__(*args, **kw)
+
+    def onComplete(self, buffer_list, user_data, status):
+        if status < 0:
+            trace('aio write completion error:', -status)
+        else:
+            trace('aio write completion sent', status, 'bytes')
+        if status != -errno.ESHUTDOWN and self.__stranded_buffer_list_queue:
+            buffer_list = self.__stranded_buffer_list_queue.popleft()
+            if not self.__stranded_buffer_list_queue:
+                trace('send queue has room, resume sending')
+                self.__onCanSend()
+            return buffer_list
+
+    def onSubmitEAGAIN(self, buffer_list, user_data):
+        self.__stranded_buffer_list_queue.append(buffer_list)
+        trace('send queue full, pause sending')
+        self.__onCannotSend()
+
+    def forgetStranded(self):
+        self.__stranded_buffer_list_queue.clear()
 
 class USBCat(functionfs.Function):
-    _enabled = False
-
     def __init__(self, path, writer, onCanSend, onCannotSend):
-        self._aio_context = libaio.AIOContext(
-            PENDING_READ_COUNT + MAX_PENDING_WRITE_COUNT,
-        )
-        self.eventfd = eventfd = libaio.EventFD()
-        self._writer = writer
         fs_list, hs_list, ss_list = functionfs.getInterfaceInAllSpeeds(
             interface={
                 'bInterfaceClass': functionfs.ch9.USB_CLASS_VENDOR_SPEC,
@@ -78,176 +99,103 @@ class USBCat(functionfs.Function):
                 0x0409: [
                     u"USBCat",
                 ],
-            }
+            },
         )
-        to_host = self.getEndpoint(2)
-        self._aio_recv_block_list = [
-            libaio.AIOBlock(
-                mode=libaio.AIOBLOCK_MODE_READ,
-                target_file=to_host,
-                buffer_list=[bytearray(BUF_SIZE)],
-                offset=0,
-                eventfd=eventfd,
-                onCompletion=self._onReceived,
-            )
-            for _ in xrange(PENDING_READ_COUNT)
-        ]
-        self._aio_send_block_list = []
-        self._real_onCanSend = onCanSend
-        self._real_onCannotSend = onCannotSend
-        self._need_resume = False
+        self.__onCanSend = onCanSend
+        self.__onCannotSend = onCannotSend
+        self.__writer = writer
 
-    def close(self):
-        self._disable()
-        self._aio_context.close()
-        super(USBCat, self).close()
+    def getEndpointClass(self, is_in, descriptor):
+        return (
+            functools.partial(
+                EndpointINFile,
+                onCanSend=self.__onCanSend,
+                onCannotSend=self.__onCannotSend,
+            )
+            if is_in else
+            functools.partial(
+                EndpointOUTFile,
+                writer=self.__writer,
+            )
+        )
+
+    def __enter__(self):
+        result = super(USBCat, self).__enter__()
+        self.in_ep = self.getEndpoint(1)
+        return result
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.__onCannotSend()
+        super(USBCat, self).__exit__(exc_type, exc_value, traceback)
 
     def onBind(self):
-        """
-        Just for tracing purposes.
-        """
         trace('onBind')
+        super(USBCat, self).onBind()
 
     def onUnbind(self):
-        """
-        Kernel may unbind us without calling disable.
-        It does cancel all pending IOs before signaling unbinding, so it would
-        be sufficient to mark us as disabled... Except we need to call
-        onCannotSend ourselves.
-        """
         trace('onUnbind')
-        self._disable()
+        self.in_ep.forgetStranded()
+        self.__onCannotSend()
+        super(USBCat, self).onUnbind()
 
     def onEnable(self):
-        """
-        The configuration containing this function has been enabled by host.
-        Endpoints become working files, so submit some read operations.
-        """
         trace('onEnable')
-        self._disable()
-        self._aio_context.submit(self._aio_recv_block_list)
-        self._real_onCanSend()
-        self._enabled = True
+        super(USBCat, self).onEnable()
+        self.__onCanSend()
 
     def onDisable(self):
         trace('onDisable')
-        self._disable()
-
-    def _disable(self):
-        """
-        The configuration containing this function has been disabled by host.
-        Endpoint do not work anymore, so cancel AIO operation blocks.
-        """
-        if self._enabled:
-            self._real_onCannotSend()
-            has_cancelled = 0
-            for block in self._aio_recv_block_list + self._aio_send_block_list:
-                try:
-                    self._aio_context.cancel(block)
-                except OSError as exc:
-                    trace(
-                        'cancelling %r raised: %s' % (block, exc),
-                    )
-                else:
-                    has_cancelled += 1
-            if has_cancelled:
-                noIntr(functools.partial(self._aio_context.getEvents, min_nr=None))
-            self._enabled = False
-
-    def onAIOCompletion(self):
-        """
-        Call when eventfd notified events are available.
-        """
-        event_count = self.eventfd.read()
-        trace('eventfd reports %i events' % event_count)
-        # Even though eventfd signaled activity, even though it may give us
-        # some number of pending events, some events seem to have been already
-        # processed (maybe during io_cancel call ?).
-        # So do not trust eventfd value, and do not even trust that there must
-        # be even one event to process.
-        self._aio_context.getEvents(0)
-
-    def _onReceived(self, block, res, res2):
-        if res != -errno.ESHUTDOWN:
-            # XXX: is it good to resubmit on any other error ?
-            self._aio_context.submit([block])
-        if res < 0:
-            trace('aio read completion error:', -res)
-        else:
-            trace('aio read completion received', res, 'bytes')
-            self._writer(block.buffer_list[0][:res])
-
-    def _onCanSend(self, block, res, res2):
-        if res < 0:
-            trace('aio write completion error:', -res)
-        else:
-            trace('aio write completion sent', res, 'bytes')
-        self._aio_send_block_list.remove(block)
-        if self._need_resume:
-            trace('send queue has room, resume sending')
-            self._real_onCanSend()
-            self._need_resume = False
-
-    def _onCannotSend(self):
-        trace('send queue full, pause sending')
-        self._real_onCannotSend()
-        self._need_resume = True
-
-    def write(self, value):
-        """
-        Queue write in kernel.
-        value (bytes)
-            Value to send.
-        """
-        aio_block = libaio.AIOBlock(
-            mode=libaio.AIOBLOCK_MODE_WRITE,
-            target_file=self.getEndpoint(1),
-            buffer_list=[bytearray(value)],
-            offset=0,
-            eventfd=self.eventfd,
-            onCompletion=self._onCanSend,
-        )
-        self._aio_send_block_list.append(aio_block)
-        self._aio_context.submit([aio_block])
-        if len(self._aio_send_block_list) == MAX_PENDING_WRITE_COUNT:
-            self._onCannotSend()
+        self.in_ep.forgetStranded()
+        self.__onCannotSend()
+        super(USBCat, self).onDisable()
 
 def main(path):
     epoll = select.epoll(3)
     def sender():
-        buf = sys.stdin.read(BUF_SIZE)
-        trace('sending', len(buf), 'bytes')
-        function.write(buf)
+        # Note: readinto (from io module) would avoid at least one memory copy,
+        # but python2 memoryview-of-bytearray incompatibility with
+        # ctypes' from_buffer means the buffer would have to have the right
+        # size before we know how many bytes we are reading.
+        # So just read and convert into the mutable buffer required by submit.
+        buf = bytearray(sys.stdin.read(BUF_SIZE))
+        trace('queuing', len(buf), 'bytes')
+        in_ep_submit([buf])
+
     def stopSender():
         try:
             epoll.unregister(sys.stdin)
         except IOError as exc:
             if exc.errno != errno.ENOENT:
                 raise
-    event_dispatcher_dict = {
-        sys.stdin.fileno(): sender,
-    }
-    def register(file_object, handler):
-        epoll.register(file_object, select.EPOLLIN)
-        event_dispatcher_dict[file_object.fileno()] = handler
     with USBCat(
         path,
         sys.stdout.write,
         onCanSend=lambda: epoll.register(sys.stdin, select.EPOLLIN),
         onCannotSend=stopSender,
     ) as function:
+        in_ep_submit = function.in_ep
         fcntl.fcntl(
             sys.stdin,
             fcntl.F_SETFL,
             fcntl.fcntl(sys.stdin, fcntl.F_GETFL) | os.O_NONBLOCK,
         )
-        register(function.eventfd, function.onAIOCompletion)
-        register(function.ep0, function.processEvents)
+        event_dispatcher_dict = {
+            sys.stdin.fileno(): sender,
+            function.eventfd.fileno(): function.processEvents,
+        }
+        epoll.register(function.eventfd, select.EPOLLIN)
+        poll = epoll.poll
         try:
             while True:
-                for fd, event in noIntr(epoll.poll):
-                    trace('epoll: fd %r got event %r' % (fd, event))
-                    event_dispatcher_dict[fd]()
+                try:
+                    event_list = poll()
+                except OSError as exc:
+                    if exc.errno != errno.EINTR:
+                        raise
+                else:
+                    for fd, event in event_list:
+                        trace('epoll: fd %r got event %r' % (fd, event))
+                        event_dispatcher_dict[fd]()
         except (KeyboardInterrupt, EOFError):
             pass
 

@@ -24,12 +24,16 @@ Provides methods for accessing each endpoint and to react to events.
 import ctypes
 import errno
 import fcntl
+import functools
 import io
 import itertools
 import math
+import mmap
 import os
+import select
 import struct
 import warnings
+import libaio
 from .common import (
     USBDescriptorHeader,
     le32,
@@ -70,6 +74,7 @@ from .functionfs import (
     HAS_HS_DESC,
     HAS_SS_DESC,
     HAS_MS_OS_DESC,
+    EVENTFD,
     ALL_CTRL_RECIP,
     CONFIG0_SETUP,
     BIND, UNBIND, ENABLE, DISABLE, SETUP, SUSPEND, RESUME,
@@ -99,6 +104,31 @@ __all__ = (
     'USBInterfaceAssocDescriptor',
     'OSExtCompatDesc',
 )
+
+try:
+    memoryview(mmap.mmap(-1, 1))
+except TypeError:
+    # python2
+    # Workaround pesky memoryview limitations on 2.7:
+    # memoryview(mmap) raises on python 2.7:
+    #   TypeError: cannot make memory view because object
+    #   does not have the buffer interface
+    # Still, for some reason, ctype's from_buffer works
+    # (yay !). So go mmap -> ctypes array here, so enpoint
+    # file's _onComplete can directly take a memoryview of
+    # it, to avoid copying the whole received buffer.
+    # And keep a strong reference to mmap object.
+    def _mmap2memoryviewFriendly(value, mmap_list):
+        mmap_list.append(value)
+        return (
+            ctypes.c_char * len(value)
+        ).from_buffer(value)
+else:
+    # python3
+    # Python 3 does not like memoryviews over ctype objects,
+    # but is fine over direct mmap.
+    def _mmap2memoryviewFriendly(value, mmap_list):
+        return value
 
 _MAX_PACKET_SIZE_DICT = {
     ch9.USB_ENDPOINT_XFER_ISOC: (
@@ -389,13 +419,12 @@ def getOSExtPropDesc(data_type, name, value):
 #        **kw
 #    )
 
-def getDescsV2(flags, fs_list=(), hs_list=(), ss_list=(), os_list=()):
+def getDescsV2(flags, fs_list=(), hs_list=(), ss_list=(), os_list=(), eventfd=None):
     """
     Return a FunctionFS descriptor suitable for serialisation.
 
     flags (int)
-        Any combination of VIRTUAL_ADDR, EVENTFD, ALL_CTRL_RECIP,
-        CONFIG0_SETUP.
+        Any combination of VIRTUAL_ADDR, ALL_CTRL_RECIP, CONFIG0_SETUP.
     {fs,hs,ss,os}_list (list of descriptors)
         Instances of the following classes:
         {fs,hs,ss}_list:
@@ -413,10 +442,16 @@ def getDescsV2(flags, fs_list=(), hs_list=(), ss_list=(), os_list=()):
             order, bEndpointAddress-wise.
         os_list:
             OSDesc
+    eventfd (file, None)
+        eventfd file instance. If not None, must have fileno method.
     """
     count_field_list = []
     descr_field_list = []
     kw = {}
+    if eventfd is not None:
+        flags |= EVENTFD
+        count_field_list.append(('eventfd', le32))
+        kw['eventfd'] = eventfd.fileno()
     for descriptor_list, flag, prefix, allowed_descriptor_klass in (
         (fs_list, HAS_FS_DESC, 'fs', USBDescriptorHeader),
         (hs_list, HAS_HS_DESC, 'hs', USBDescriptorHeader),
@@ -549,6 +584,9 @@ class EndpointFileBase(io.FileIO):
     """
     File object representing a endpoint. Abstract.
     """
+    def __init__(self, path):
+        super(EndpointFileBase, self).__init__(path, 'r+')
+
     def _ioctl(self, func, *args, **kw):
         result = fcntl.ioctl(self, func, *args, **kw)
         if result < 0:
@@ -656,6 +694,19 @@ class EndpointINFile(EndpointFile):
     """
     Write-only endpoint file.
     """
+    def __init__(self, path, submit, eventfd):
+        """
+        path (string)
+            Endpoint file path.
+        submit (AIOContext.submit)
+            To submit AIOBlocks.
+        eventfd (EventFD)
+            eventfd to set on all AIOBlocks created for this endpoint.
+        """
+        super(EndpointINFile, self).__init__(path)
+        self._submit = submit
+        self._eventfd = eventfd
+
     @staticmethod
     def read(*_, **__):
         """
@@ -677,10 +728,141 @@ class EndpointINFile(EndpointFile):
     def _halt(self):
         super(EndpointINFile, self).read(0)
 
+    def submit(self, buffer_list, user_data=None):
+        """
+        Non-blocking, zero-copy, AIO-based alternative to "write".
+
+        Queue a list of buffers for sending from this endpoint as a single
+        USB transfer (which may be composed of multiple transactions, the last
+        one of which will be automatically be made less than wMaxPacketSize so
+        host knows we are done sending).
+
+        buffer_list (sized iterable of mutable buffer objects)
+            Buffer mutability is needed because they are not internally copied
+            and will leave python interpreter. Nothing is expected to mutate
+            them, though.
+            Also, you should not mutate them between this call and
+            corresponding completion event (see onComplete).
+        user_data (anything)
+            Opaque object passed verbatim to onComplete on completion of this
+            transfer.
+
+        May raise OSError(EAGAIN) if there is currently no room for AIO blocks
+        (see __init__ in_aio_blocks_max).
+        """
+        try:
+            self._submit((
+                libaio.AIOBlock(
+                    mode=libaio.AIOBLOCK_MODE_WRITE,
+                    target_file=self,
+                    buffer_list=buffer_list,
+                    offset=0,
+                    eventfd=self._eventfd,
+                    onCompletion=functools.partial(
+                        self._onComplete,
+                        buffer_list,
+                        user_data,
+                    ),
+                ),
+            ))
+        except OSError as exc:
+            if exc.errno != errno.EAGAIN:
+                raise
+            self.onSubmitEAGAIN(buffer_list, user_data)
+
+    def _onComplete(
+        self,
+        buffer_list, user_data, # from functools.partial
+        aio_block, res, res2, # from libaio
+    ):
+        # res2 is ignored as it just repeats res.
+        callback_result = self.onComplete(
+            buffer_list,
+            user_data,
+            res,
+        )
+        if callback_result:
+            if res == -errno.ESHUTDOWN:
+                raise ValueError(
+                    'onComplete cannot ask to resubmit transfer which '
+                    'completed with status %i' % res,
+                )
+            if callback_result is not True:
+                aio_block.buffer_list = callback_result
+                aio_block.onCompletion = functools.partial(
+                    self._onComplete,
+                    callback_result,
+                    user_data,
+                )
+            try:
+                self._submit((aio_block, ))
+            except OSError as exc:
+                if exc.errno != errno.EAGAIN:
+                    raise
+                self.onSubmitEAGAIN(aio_block.buffer_list, user_data)
+
+    def onComplete(self, buffer_list, user_data, status):
+        """
+        Called when a transfer, queued using submit, completed.
+
+        buffer_list, user_data:
+            Values which were provided to submit when initiating this
+            transfer.
+        status (int)
+            Error code if there was an error (negative errno value), number of
+            bytes transfered otherwise.
+
+        If a true value is returned, the same transfer is resubmitted:
+        - if returned value is True (the builtin), transfer reuses the same
+          buffers
+        - otherwise, it must be a value similar to buffer_list argument of
+          submit method, and will replace buffer in transfer before it gets
+          resubmitted. This is especially useful when large buffers are
+          prepared, but a different-sized chunk must be submitted on each
+          transfer. In which case, this value would be a tuple of memoryview
+          instance(s) covering the intended buffer chunk(s), for example.
+        Must not return a true value if status is -errno.ESHUTDOWN.
+
+        May be overridden in subclass.
+        """
+        return False
+
+    def onSubmitEAGAIN(self, buffer_list, user_data):
+        """
+        Called when submit fails with EAGAIN.
+        This may be during a call to submit or when onComplete requested its
+        transfer to be resubmitted.
+
+        By default, re-raises the original OSError exception.
+
+        buffer_list, user_data:
+            Values which were provided to submit when initiating this
+            transfer.
+
+        May be overridden in subclass.
+        """
+        raise # pylint: disable=misplaced-bare-raise
+
 class EndpointOUTFile(EndpointFile):
     """
     Read-only endpoint file.
     """
+    def __init__(self, path, submit, aio_block_list):
+        """
+        path (string)
+            Endpoint file path.
+        submit (AIOContext.submit)
+            To submit AIOBlocks to after completion.
+        aio_block_list (list of AIOBlock)
+            Blocks which belong to this endpoint. Modified to bind them to
+            this file object (target_file and onCompletion).
+        """
+        super(EndpointOUTFile, self).__init__(path)
+        self._submit = submit
+        for aio_block in aio_block_list:
+            aio_block.target_file = self
+            aio_block.onCompletion = self._onComplete
+
     @staticmethod
     def write(*_, **__):
         """
@@ -699,23 +881,56 @@ class EndpointOUTFile(EndpointFile):
     def _halt(self):
         super(EndpointOUTFile, self).write(b'')
 
-_INFINITY = itertools.repeat(None)
-_ONCE = (None, )
+    def _onComplete(self, aio_block, res, res2):
+        # res2 is ignored as it just repeats res.
+        if res < 0:
+            data = None
+            status = res
+        else:
+            aio_buffer, = aio_block.buffer_list
+            data = memoryview(aio_buffer)[:res]
+            status = 0
+        self.onComplete(
+            data=data,
+            status=status,
+        )
+        if res != -errno.ESHUTDOWN:
+            # XXX: is it good to resubmit on any other error ?
+            # XXX: what should be done on EAGAIN ?
+            self._submit((aio_block, ))
+
+    def onComplete(self, data, status):
+        """
+        Called when this endpoint received data.
+
+        data (memoryview, None)
+            Data received, or None if there was an error.
+            Once this method returns the underlying buffer will be reused,
+            so you must copy any piece you cannot immediately process.
+        status (int, None)
+            Error code if there was an error (negative errno value), zero
+            otherwise.
+
+        May be overridden in subclass.
+        """
+        pass
 
 class Function(object):
     """
     Pythonic class for interfacing with FunctionFS.
 
     Properties available:
-        function_remote_wakeup_capable (bool)
-            Whether the function wishes to be allowed to wake host.
-        function_remote_wakeup (bool)
-            Whether host has allowed the function to wake it up.
-            Set and cleared by onSetup by calling enableRemoteWakeup and
-            disableRemoteWakeup, respectively.
+    function_remote_wakeup_capable (bool)
+        Whether the function wishes to be allowed to wake host.
+    function_remote_wakeup (bool)
+        Whether host has allowed the function to wake it up.
+        Set and cleared by onSetup by calling enableRemoteWakeup and
+        disableRemoteWakeup, respectively.
     """
-    _closed = False
-    _ep_list = () # Avoids failing in __del__ when (subclass') __init__ fails.
+    _open = False
+    _ep_list = ()
+    _in_aio_context = _out_aio_context = None
+
     function_remote_wakeup_capable = False
     function_remote_wakeup = False
 
@@ -726,6 +941,9 @@ class Function(object):
         os_list=(),
         lang_dict={},
         all_ctrl_recip=False, config0_setup=False,
+        in_aio_blocks_max=32,
+        out_aio_blocks_per_endpoint=2,
+        out_aio_blocks_max_packet_count=10,
     ):
         """
         path (string)
@@ -747,70 +965,170 @@ class Function(object):
         config0_setup (bool)
             When true, this function will receive control transactions before
             any configuration gets enabled.
+        in_aio_blocks_max (int)
+            Maximum number of IN transfers in-flight at any given time.
+            Submitting more transfers (using submitIN) will raise
+            OSError(EAGAIN).
+            There may be a system-wide limit (64k AIO transfers as of 4.18).
+        out_aio_blocks_per_endpoint (int)
+            Number of OUT transfers to submit for each OUT endpoint.
+        out_aio_blocks_max_packet_count (int)
+            Maximum number of maximum-size USB packets to receive on each
+            OUT endpoint AIO block.
+            Memory usage from these buffers will be:
+                out_aio_blocks_per_endpoint * sum_OUT_wMaxPacketSize *
+                out_aio_blocks_max_packet_count
+            So by default 10kB per 512-bytes OUT endpoint will be allocated.
         """
         self._path = path
-        ep0 = Endpoint0File(os.path.join(path, 'ep0'), 'r+')
-        self._ep_list = ep_list = [ep0]
         self._ep_address_dict = ep_address_dict = {}
+        self._eventfd = eventfd = libaio.EventFD(flags=libaio.EFD_NONBLOCK)
         flags = 0
         if all_ctrl_recip:
             flags |= ALL_CTRL_RECIP
         if config0_setup:
             flags |= CONFIG0_SETUP
-        # Note: serialise does not prevent its argument from being freed and
-        # reallocated. Keep strong references to to-serialise values until
-        # after they get written.
-        desc = getDescsV2(
+        self._function_descriptor = getDescsV2(
             flags,
             fs_list=fs_list,
             hs_list=hs_list,
             ss_list=ss_list,
             os_list=os_list,
+            eventfd=eventfd,
         )
-        ep0.write(serialise(desc))
-        # TODO: try v1 on failure ?
-        del desc
-        # Note: see above.
-        strings = getStrings(lang_dict)
-        ep0.write(serialise(strings))
-        del strings
+        self._function_strings = getStrings(lang_dict)
+        self._out_aio_block_list = out_aio_block_list = []
+        self._out_aio_block_dict = out_aio_block_dict = {}
+        self._mmap_list = mmap_list = []
+        self._ep_descriptor_list = ep_descriptor_list = []
         for descriptor in ss_list or hs_list or fs_list:
             if descriptor.bDescriptorType == ch9.USB_DT_ENDPOINT:
                 assert descriptor.bEndpointAddress not in ep_address_dict, (
                     descriptor,
                     ep_address_dict[descriptor.bEndpointAddress],
                 )
-                index = len(ep_list)
+                ep_descriptor_list.append(descriptor)
+                is_in = descriptor.bEndpointAddress & ch9.USB_DIR_IN
+                index = len(ep_descriptor_list)
                 ep_address_dict[descriptor.bEndpointAddress] = index
-                ep_list.append(
-                    (
-                        EndpointINFile
-                        if descriptor.bEndpointAddress & ch9.USB_DIR_IN
-                        else EndpointOUTFile
-                    )(
-                        os.path.join(path, 'ep%u' % (index, )),
-                        'r+',
-                    )
+                if not is_in:
+                    out_aio_block_dict[index] = ep_aio_block_list = []
+                    for _ in xrange(out_aio_blocks_per_endpoint):
+                        # Using mmap to get a page-aligned buffer. f_fs strongly
+                        # recommends aligning IN buffers to wMaxPacketSize
+                        # addresses, as this may be required by some UDCs.
+                        # Assume wMaxPacketSize will be less than a page.
+                        out_block = libaio.AIOBlock(
+                            mode=libaio.AIOBLOCK_MODE_READ,
+                            buffer_list=(
+                                _mmap2memoryviewFriendly(
+                                    value=mmap.mmap(
+                                        -1, # Anonymous map
+                                        out_aio_blocks_max_packet_count *
+                                        descriptor.wMaxPacketSize,
+                                    ),
+                                    mmap_list=mmap_list,
+                                ),
+                            ),
+                            offset=0,
+                            eventfd=eventfd,
+                        )
+                        ep_aio_block_list.append(out_block)
+                        out_aio_block_list.append(out_block)
+        if out_aio_block_list:
+            self._out_aio_context = libaio.AIOContext(
+                len(out_aio_block_list),
+            )
+        self._in_aio_context = libaio.AIOContext(
+            in_aio_blocks_max,
+        )
+        # FunctionFS can queue up to 4 events, so let's read that much.
+        self._ep0_event_array_type = ep0_event_array_type = Event * 4
+        self._ep0_event_size = ctypes.sizeof(Event)
+        self._ep0_event_array_size = ctypes.sizeof(ep0_event_array_type)
+
+    def __enter__(self):
+        """
+        Sends descriptor to kernel and opens endpoint files.
+        """
+        if self._open:
+            raise RuntimeError('Context manager already active')
+        try:
+            ep0 = Endpoint0File(os.path.join(self._path, 'ep0'))
+            self._ep_list = ep_list = [ep0]
+            ep0.write(serialise(self._function_descriptor))
+            ep0.write(serialise(self._function_strings))
+            out_aio_block_dict = self._out_aio_block_dict
+            for descriptor in self._ep_descriptor_list:
+                index = len(ep_list)
+                endpoint_path = os.path.join(self._path, 'ep%u' % (index, ))
+                is_in = bool(descriptor.bEndpointAddress & ch9.USB_DIR_IN)
+                endpoint_class = self.getEndpointClass(
+                    is_in=is_in,
+                    descriptor=descriptor,
                 )
+                if is_in:
+                    ep_file = endpoint_class(
+                        path=endpoint_path,
+                        submit=self._in_aio_context.submit,
+                        eventfd=self._eventfd,
+                    )
+                else:
+                    ep_file = endpoint_class(
+                        path=endpoint_path,
+                        submit=self._out_aio_context.submit,
+                        aio_block_list=out_aio_block_dict[index],
+                    )
+                ep_list.append(ep_file)
+            fcntl.fcntl(
+                ep0,
+                fcntl.F_SETFL,
+                fcntl.fcntl(ep0, fcntl.F_GETFL) | os.O_NONBLOCK,
+            )
+        except:
+            self.__unenter()
+            raise
+        self._open = True
+        return self
+
+    def __unenter(self):
+        """
+        Undo what __enter__ did.
+        """
+        self._in_aio_context.cancelAll()
+        out_aio_context = self._out_aio_context
+        if out_aio_context is not None:
+            out_aio_context.cancelAll()
+            self._out_aio_block_list = []
+        ep_list = self._ep_list
+        while ep_list:
+            ep_list.pop().close()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """
+        Close all endpoint file descriptors.
+
+        Cancels all submitted AIOs and blocks until all are finalised.
+        """
+        self._open = False
+        self.__unenter()
+
+    @property
+    def eventfd(self):
+        """
+        A file-like object which is notified of AIO operation events.
+        For polling uses only.
+        """
+        return self._eventfd
 
     @property
     def ep0(self):
         """
         Endpoint 0, use when handling setup transactions.
+
+        Non-blocking.
         """
         return self._ep_list[0]
-
-    def close(self):
-        """
-        Close all endpoint file descriptors.
-        """
-        ep_list = self._ep_list
-        while ep_list:
-            ep_list.pop().close()
-        self._closed = True
-
-    def __del__(self):
-        self.close()
 
     __event_dict = {
         BIND: 'onBind',
@@ -822,30 +1140,85 @@ class Function(object):
         RESUME: 'onResume',
     }
 
-    def __process(self, iterator):
-        readinto = self.ep0.readinto
-        # FunctionFS can queue up to 4 events, so let's read that much.
-        event_len = ctypes.sizeof(Event)
-        array_type = Event * 4
-        buf = bytearray(ctypes.sizeof(array_type))
-        event_list = array_type.from_buffer(buf)
-        event_dict = self.__event_dict
-        for _ in iterator:
-            if self._closed:
-                break
-            try:
-                length = readinto(buf)
-            except IOError as exc:
-                if exc.errno == errno.EINTR:
-                    continue
+    def getEndpointClass(self, is_in, descriptor):
+        """
+        Called during __enter__ when opening endpoint files, to get the class
+        to use to represent given it.
+        May be overriden to customise specific endpoint classes.
+
+        is_in (bool)
+            Endpoint direction: true for IN endpoints, false for OUT
+            endpoints.
+            Just a more convenient presentation of thuis value, also present
+            in the descriptor.
+        descriptor (USBEndpointDescriptor{,NoAudio})
+            Full descriptor for corresponding endpoint.
+
+        Must return a EndpointINFile-compatible class for IN endpoints,
+        and EndpointOUTFile-compatible class for OUT endpoints.
+        """
+        return EndpointINFile if is_in else EndpointOUTFile
+
+    def processEventsForever(self):
+        """
+        Process events until either an exception occurs or close is called.
+        """
+        # Intent: "with select.epoll(1) as epoll:"
+        # But it only became a context manager in python3...
+        epoll = select.epoll(1)
+        try:
+            epoll.register(self.eventfd, select.EPOLLIN)
+            poll = epoll.poll
+            processEvents = self.processEvents
+            while self._open:
+                try:
+                    poll()
+                except OSError as exc:
+                    if exc.errno != errno.EINTR:
+                        raise
+                else:
+                    processEvents()
+        finally:
+            epoll.close()
+
+    def processEvents(self):
+        """
+        Process any available event (both functionfs events and
+        AIO completions).
+
+        Non-blocking. Should be called whenever ep0 or eventfd become readable.
+        """
+        try:
+            # Rearm before calling getEvent, so that we do not risk skipping
+            # events.
+            # Discard returned value because:
+            # - we cannot tell which AIO context has how many events ready
+            # - even if we could (which is easy: use moar eventfds !) any
+            #   discrepancy would either result in a hard-lock (waiting for
+            #   events which did not arive yet, and whose AIO blocks may not
+            #   have been submitted yet), or result in an early timeout which
+            #   would defeat the purpose of observing this count.
+            # So if this call succeeds, call non-blocking getEvents on both AIO
+            # contexts, and if it fails with EAGAIN skip this (minor
+            # optimisation, this means this was likely called to handle ep0
+            # events).
+            self._eventfd.read()
+        except IOError as exc:
+            if exc.errno != errno.EAGAIN:
                 raise
-            if not length:
-                # Note: also catches None, returned when ep0 is non-blocking
-                break # TODO: test if this happens when ep0 gets closed
-                      # (by FunctionFS or in another thread or in a handler)
-            count, remainder = divmod(length, event_len)
-            assert remainder == 0, (length, event_len)
-            for index in range(count):
+        else:
+            self._in_aio_context.getEvents(0)
+            out_aio_context = self._out_aio_context
+            if out_aio_context is not None:
+                out_aio_context.getEvents(0)
+        buf = bytearray(self._ep0_event_array_size)
+        length = self.ep0.readinto(buf)
+        if length:
+            event_dict = self.__event_dict
+            count, remainder = divmod(length, self._ep0_event_size)
+            assert remainder == 0, (length, self._ep0_event_size)
+            event_list = self._ep0_event_array_type.from_buffer(buf)
+            for index in xrange(count):
                 event = event_list[index]
                 event_type = event.type
                 if event_type == SETUP:
@@ -865,21 +1238,6 @@ class Function(object):
                 else:
                     getattr(self, event_dict[event.type])()
 
-    def processEventsForever(self):
-        """
-        Process kernel ep0 events until closed.
-
-        ep0 must be in blocking mode, otherwise behaves like `processEvents`.
-        """
-        self.__process(_INFINITY)
-
-    def processEvents(self):
-        """
-        Process at least one kernel event if ep0 is in blocking mode.
-        Process any already available event if ep0 is in non-blocking mode.
-        """
-        self.__process(_ONCE)
-
     def getEndpoint(self, index):
         """
         Return a file object corresponding to given endpoint index,
@@ -892,12 +1250,6 @@ class Function(object):
         Return a file object corresponding to given endpoint address.
         """
         return self.getEndpoint(self._ep_address_dict[address])
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
 
     def onBind(self):
         """
@@ -920,10 +1272,13 @@ class Function(object):
         Called when FunctionFS signals the function was (re)enabled.
         This may happen several times without onDisable being called.
         It must reset the function to its default state.
+        Also, submits transfers to all IN endpoints (if any).
 
         May be overridden in subclass.
         """
         self.disableRemoteWakeup()
+        if self._out_aio_block_list:
+            self._out_aio_context.submit(self._out_aio_block_list)
 
     def onDisable(self):
         """

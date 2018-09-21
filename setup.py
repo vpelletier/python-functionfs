@@ -37,6 +37,7 @@ setup(
     packages=['functionfs', 'functionfs.tests'],
     install_requires=[
         'ioctl-opt',
+        'libaio',
     ],
     tests_require=[
         'libusb1',
