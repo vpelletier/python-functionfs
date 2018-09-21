@@ -139,6 +139,9 @@ def getInterfaceInAllSpeeds(interface, endpoint_list):
         wMaxPacketSize must not be provided, it will be set to the maximum
         size for given speed and endpoint type.
         bmAttributes must be provided.
+        If bEndpointAddress is zero (excluding direction bit) on the first
+        endpoint, endpoints will be assigned their rank in this list,
+        starting at 1. Their direction bit is preserved.
       - "superspeed": optional, contains keyword arguments for
           getDescriptor(USBSSEPCompDescriptor, ...)
       - "superspeed_iso": optional, contains keyword arguments for
@@ -159,11 +162,21 @@ def getInterfaceInAllSpeeds(interface, endpoint_list):
     fs_list = [interface]
     hs_list = [interface]
     ss_list = [interface]
-    for endpoint in endpoint_list:
+    need_address = (
+        endpoint_list[0]['endpoint'].get(
+            'bEndpointAddress',
+            0,
+        ) & ~ch9.USB_DIR_IN == 0
+    )
+    for index, endpoint in enumerate(endpoint_list, 1):
         endpoint_kw = endpoint['endpoint']
         fs_max, hs_max, ss_max = _MAX_PACKET_SIZE_DICT[
             endpoint_kw['bmAttributes'] & ch9.USB_ENDPOINT_XFERTYPE_MASK
         ]
+        if need_address:
+            endpoint_kw['bEndpointAddress'] = index | (
+                endpoint_kw.get('bEndpointAddress', 0) & ch9.USB_DIR_IN
+            )
         klass = (
             USBEndpointDescriptor
             if 'bRefresh' in endpoint_kw or 'bSynchAddress' in endpoint_kw else

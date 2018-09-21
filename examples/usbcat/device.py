@@ -58,12 +58,12 @@ class USBCat(functionfs.Function):
             endpoint_list=[
                 {
                     'endpoint': {
-                        'bEndpointAddress': 1 | functionfs.ch9.USB_DIR_IN,
+                        'bEndpointAddress': functionfs.ch9.USB_DIR_IN,
                         'bmAttributes': functionfs.ch9.USB_ENDPOINT_XFER_BULK,
                     },
                 }, {
                     'endpoint': {
-                        'bEndpointAddress': 2 | functionfs.ch9.USB_DIR_OUT,
+                        'bEndpointAddress': functionfs.ch9.USB_DIR_OUT,
                         'bmAttributes': functionfs.ch9.USB_ENDPOINT_XFER_BULK,
                     },
                 },
