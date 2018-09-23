@@ -719,7 +719,6 @@ class Function(object):
         disableRemoteWakeup, respectively.
     """
     _open = False
-    # Avoid failing in __del__ when (subclass') __init__ fails.
     _ep_list = ()
     _in_aio_context = _out_aio_context = None
 
@@ -774,8 +773,6 @@ class Function(object):
             So by default 10kB per 512-bytes OUT endpoint will be allocated.
         """
         self._path = path
-        ep0 = Endpoint0File(os.path.join(path, 'ep0'), 'r+')
-        self._ep_list = ep_list = [ep0]
         self._ep_address_dict = ep_address_dict = {}
         self._eventfd = eventfd = libaio.EventFD(flags=libaio.EFD_NONBLOCK)
         flags = 0
@@ -783,10 +780,7 @@ class Function(object):
             flags |= ALL_CTRL_RECIP
         if config0_setup:
             flags |= CONFIG0_SETUP
-        # Note: serialise does not prevent its argument from being freed and
-        # reallocated. Keep strong references to to-serialise values until
-        # after they get written.
-        desc = getDescsV2(
+        self._function_descriptor = getDescsV2(
             flags,
             fs_list=fs_list,
             hs_list=hs_list,
@@ -794,31 +788,23 @@ class Function(object):
             os_list=os_list,
             eventfd=eventfd,
         )
-        ep0.write(serialise(desc))
-        # TODO: try v1 on failure ?
-        del desc
-        # Note: see above.
-        strings = getStrings(lang_dict)
-        ep0.write(serialise(strings))
-        del strings
+        self._function_strings = getStrings(lang_dict)
         self._out_aio_block_list = out_aio_block_list = []
+        self._out_aio_block_dict = out_aio_block_dict = {}
         self._mmap_list = mmap_list = []
+        self._ep_descriptor_list = ep_descriptor_list = []
         for descriptor in ss_list or hs_list or fs_list:
             if descriptor.bDescriptorType == ch9.USB_DT_ENDPOINT:
                 assert descriptor.bEndpointAddress not in ep_address_dict, (
                     descriptor,
                     ep_address_dict[descriptor.bEndpointAddress],
                 )
+                ep_descriptor_list.append(descriptor)
                 is_in = descriptor.bEndpointAddress & ch9.USB_DIR_IN
-                index = len(ep_list)
+                index = len(ep_descriptor_list)
                 ep_address_dict[descriptor.bEndpointAddress] = index
-                ep_file = (
-                    EndpointINFile if is_in else EndpointOUTFile
-                )(
-                    os.path.join(path, 'ep%u' % (index, )),
-                    'r+',
-                )
                 if not is_in:
+                    out_aio_block_dict[index] = ep_aio_block_list = []
                     for _ in xrange(out_aio_blocks_per_endpoint):
                         # Using mmap to get a page-aligned buffer. f_fs strongly
                         # recommends aligning IN buffers to wMaxPacketSize
@@ -839,24 +825,22 @@ class Function(object):
                         # to avoid copying the whole received buffer.
                         # And keep a strong reference to mmap object.
                         mmap_list.append(out_buffer)
-                        out_aio_block_list.append(
-                            libaio.AIOBlock(
-                                mode=libaio.AIOBLOCK_MODE_READ,
-                                target_file=ep_file,
-                                buffer_list=(
-                                    (
-                                        ctypes.c_char * len(out_buffer)
-                                    ).from_buffer(out_buffer),
-                                ),
-                                offset=0,
-                                eventfd=eventfd,
-                                onCompletion=functools.partial(
-                                    self._onOUTComplete,
-                                    index,
-                                ),
-                            )
+                        out_block = libaio.AIOBlock(
+                            mode=libaio.AIOBLOCK_MODE_READ,
+                            buffer_list=(
+                                (
+                                    ctypes.c_char * len(out_buffer)
+                                ).from_buffer(out_buffer),
+                            ),
+                            offset=0,
+                            eventfd=eventfd,
+                            onCompletion=functools.partial(
+                                self._onOUTComplete,
+                                index,
+                            ),
                         )
-                ep_list.append(ep_file)
+                        ep_aio_block_list.append(out_block)
+                        out_aio_block_list.append(out_block)
         if out_aio_block_list:
             self._out_aio_context = libaio.AIOContext(
                 len(out_aio_block_list),
@@ -864,16 +848,64 @@ class Function(object):
         self._in_aio_context = libaio.AIOContext(
             in_aio_blocks_max,
         )
-        fcntl.fcntl(
-            ep0,
-            fcntl.F_SETFL,
-            fcntl.fcntl(ep0, fcntl.F_GETFL) | os.O_NONBLOCK,
-        )
         # FunctionFS can queue up to 4 events, so let's read that much.
         self._ep0_event_array_type = ep0_event_array_type = Event * 4
         self._ep0_event_size = ctypes.sizeof(Event)
         self._ep0_event_array_size = ctypes.sizeof(ep0_event_array_type)
-        self._open = True
+
+    def __enter__(self):
+        """
+        Sends descriptor to kernel and opens endpoint files.
+        """
+        if self._open:
+            raise RuntimeError('Context manager already active')
+        try:
+            ep0 = Endpoint0File(os.path.join(self._path, 'ep0'), 'r+')
+            self._ep_list = ep_list = [ep0]
+            ep0.write(serialise(self._function_descriptor))
+            ep0.write(serialise(self._function_strings))
+            out_aio_block_dict = self._out_aio_block_dict
+            for descriptor in self._ep_descriptor_list:
+                index = len(ep_list)
+                ep_file = (
+                    EndpointINFile
+                    if descriptor.bEndpointAddress & ch9.USB_DIR_IN else
+                    EndpointOUTFile
+                )(
+                    os.path.join(self._path, 'ep%u' % (index, )),
+                    'r+',
+                )
+                for out_aio_block in out_aio_block_dict.get(index, ()):
+                    out_aio_block.target_file = ep_file
+                ep_list.append(ep_file)
+            fcntl.fcntl(
+                ep0,
+                fcntl.F_SETFL,
+                fcntl.fcntl(ep0, fcntl.F_GETFL) | os.O_NONBLOCK,
+            )
+            self._open = True
+            return self
+        except:
+            # "with" statement will not call __exit__ when __enter__ raises.
+            # For above statements, it is desirable.
+            self.__exit__(None, None, None)
+            raise
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """
+        Close all endpoint file descriptors.
+
+        Cancels all submitted AIOs and blocks until all are finalised.
+        """
+        self._open = False
+        self._in_aio_context.cancelAll()
+        out_aio_context = self._out_aio_context
+        if out_aio_context is not None:
+            out_aio_context.cancelAll()
+            self._out_aio_block_list = []
+        ep_list = self._ep_list
+        while ep_list:
+            ep_list.pop().close()
 
     @property
     def eventfd(self):
@@ -891,30 +923,6 @@ class Function(object):
         Non-blocking.
         """
         return self._ep_list[0]
-
-    def close(self):
-        """
-        Close all endpoint file descriptors.
-
-        Cancels all submitted AIOs and blocks until all are finalised.
-        """
-        self._open = False
-        in_aio_context = self._in_aio_context
-        if in_aio_context is not None:
-            in_aio_context.cancelAll()
-            in_aio_context.close()
-            self._in_aio_context = None
-        out_aio_context = self._out_aio_context
-        if out_aio_context is not None:
-            out_aio_context.cancelAll()
-            out_aio_context.close()
-            self._out_aio_context = None
-        ep_list = self._ep_list
-        while ep_list:
-            ep_list.pop().close()
-
-    def __del__(self):
-        self.close()
 
     __event_dict = {
         BIND: 'onBind',
@@ -1015,12 +1023,6 @@ class Function(object):
         Return a file object corresponding to given endpoint address.
         """
         return self.getEndpoint(self._ep_address_dict[address])
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
 
     def onBind(self):
         """
