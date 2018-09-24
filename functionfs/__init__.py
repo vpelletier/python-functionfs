@@ -814,7 +814,7 @@ class Function(object):
                             setup.wIndex,
                             setup.wLength,
                         )
-                    except BaseException:
+                    except:
                         # On *ANY* exception, halt endpoint
                         self.ep0.halt(setup.bRequestType)
                         raise
