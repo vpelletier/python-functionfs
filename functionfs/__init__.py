@@ -731,7 +731,7 @@ class Function(object):
         strings = getStrings(lang_dict)
         ep0.write(serialise(strings))
         del strings
-        for descriptor in fs_list or hs_list or ss_list:
+        for descriptor in ss_list or hs_list or fs_list:
             if descriptor.bDescriptorType == ch9.USB_DT_ENDPOINT:
                 assert descriptor.bEndpointAddress not in ep_address_dict, (
                     descriptor,
