@@ -497,9 +497,10 @@ def serialise(structure):
     Returns a ctypes.c_char array.
     Does not copy memory.
     """
-    return (
-        ctypes.c_char * ctypes.sizeof(structure)
-    ).from_address(ctypes.addressof(structure))
+    return ctypes.cast(
+        pointer(structure),
+        POINTER(ctypes.c_char * ctypes.sizeof(structure)),
+    ).contents
 
 class EndpointFileBase(io.FileIO):
     """
