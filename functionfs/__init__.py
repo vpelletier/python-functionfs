@@ -969,7 +969,7 @@ class Function(object):
                                 endpoint.clearHalt()
                                 self.ep0.read(0)
                                 return
-                    if recipient == ch9.USB_RECIP_INTERFACE:
+                    elif recipient == ch9.USB_RECIP_INTERFACE:
                         if value == ch9.USB_INTRF_FUNC_SUSPEND:
                             if self.function_remote_wakeup_capable:
                                 self.disableRemoteWakeup()
@@ -987,7 +987,7 @@ class Function(object):
                                 endpoint.halt()
                                 self.ep0.read(0)
                                 return
-                    if recipient == ch9.USB_RECIP_INTERFACE:
+                    elif recipient == ch9.USB_RECIP_INTERFACE:
                         if value == ch9.USB_INTRF_FUNC_SUSPEND:
                             if self.function_remote_wakeup_capable:
                                 self.enableRemoteWakeup()
