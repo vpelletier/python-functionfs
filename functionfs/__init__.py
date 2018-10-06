@@ -218,7 +218,7 @@ def getInterfaceInAllSpeeds(interface, endpoint_list, class_descriptor_list=()):
         else:
             fs_packet_size = min(fs_max, packet_size)
             hs_packet_size = min(hs_max, packet_size)
-            ss_packet_size = min(ss_maxn packet_size)
+            ss_packet_size = min(ss_max, packet_size)
         fs_list.append(getDescriptor(
             klass,
             wMaxPacketSize=fs_max,
