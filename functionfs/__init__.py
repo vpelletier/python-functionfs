@@ -208,7 +208,7 @@ def getInterfaceInAllSpeeds(interface, endpoint_list, class_descriptor_list=()):
                 # 8 is the number of microframes in a millisecond
                 hs_interval = max(
                     1,
-                    min(16, round(1 + math.log(interval * 8, 2))),
+                    min(16, int(round(1 + math.log(interval * 8, 2)))),
                 )
         packet_size = endpoint_kw.pop('wMaxPacketSize', _MARKER)
         if packet_size is _MARKER:
