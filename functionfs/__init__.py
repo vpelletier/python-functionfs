@@ -200,7 +200,7 @@ def getInterfaceInAllSpeeds(interface, endpoint_list, class_descriptor_list=()):
         if interval is _MARKER:
             fs_interval = hs_interval = 0
         else:
-            if transfer_type == USB_ENDPOINT_XFER_BULK:
+            if transfer_type == ch9.USB_ENDPOINT_XFER_BULK:
                 fs_interval = 0
                 hs_interval = interval
             else: # USB_ENDPOINT_XFER_ISOC or USB_ENDPOINT_XFER_INT
