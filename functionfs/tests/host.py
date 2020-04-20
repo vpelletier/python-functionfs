@@ -21,7 +21,7 @@ from . import common
 
 def main():
     with usb1.USBContext() as context:
-        context.setDebug(usb1.LOG_LEVEL_DEBUG)
+        #context.setDebug(usb1.LOG_LEVEL_DEBUG)
         handle = context.openByVendorIDAndProductID(
             0x1d6b,
             0x0104,
