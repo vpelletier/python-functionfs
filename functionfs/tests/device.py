@@ -71,77 +71,65 @@ class EPThread(threading.Thread):
             run_lock.acquire(False)
 
 class FunctionFSTestDevice(functionfs.Function):
-    def __init__(self, path):
+    def __init__(self, path, ep_pair_count=15):
         ep_list = sum(
             [
                 [
                     x | functionfs.ch9.USB_DIR_IN,
                     x | functionfs.ch9.USB_DIR_OUT,
                 ]
-                for x in range(1, 16)
+                for x in range(1, ep_pair_count + 1)
             ],
             [],
         )
-        # Try allocating 15 endpoint pairs, then one EP less until success.
-        # Note: crude, will miss maximum EP count if there is more than one EP
-        # available in a direction than EPs available in the other.
-        while ep_list:
-            INTERFACE_DESCRIPTOR = functionfs.getDescriptor(
-                functionfs.USBInterfaceDescriptor,
-                bInterfaceNumber=0,
-                bAlternateSetting=0,
-                bNumEndpoints=len(ep_list),
-                bInterfaceClass=functionfs.ch9.USB_CLASS_VENDOR_SPEC,
-                bInterfaceSubClass=0,
-                bInterfaceProtocol=0,
-                iInterface=1,
+        INTERFACE_DESCRIPTOR = functionfs.getDescriptor(
+            functionfs.USBInterfaceDescriptor,
+            bInterfaceNumber=0,
+            bAlternateSetting=0,
+            bNumEndpoints=len(ep_list),
+            bInterfaceClass=functionfs.ch9.USB_CLASS_VENDOR_SPEC,
+            bInterfaceSubClass=0,
+            bInterfaceProtocol=0,
+            iInterface=1,
+        )
+        fs_list = [INTERFACE_DESCRIPTOR]
+        hs_list = [INTERFACE_DESCRIPTOR]
+        for endpoint in ep_list:
+            fs_list.append(
+                functionfs.getDescriptor(
+                    functionfs.USBEndpointDescriptorNoAudio,
+                    bEndpointAddress=endpoint,
+                    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
+                    wMaxPacketSize=FS_BULK_MAX_PACKET_SIZE,
+                    bInterval=0,
+                )
             )
-            fs_list = [INTERFACE_DESCRIPTOR]
-            hs_list = [INTERFACE_DESCRIPTOR]
-            for endpoint in ep_list:
-                fs_list.append(
-                    functionfs.getDescriptor(
-                        functionfs.USBEndpointDescriptorNoAudio,
-                        bEndpointAddress=endpoint,
-                        bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
-                        wMaxPacketSize=FS_BULK_MAX_PACKET_SIZE,
-                        bInterval=0,
-                    )
+            hs_list.append(
+                functionfs.getDescriptor(
+                    functionfs.USBEndpointDescriptorNoAudio,
+                    bEndpointAddress=endpoint,
+                    bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
+                    wMaxPacketSize=HS_BULK_MAX_PACKET_SIZE,
+                    bInterval=0,
                 )
-                hs_list.append(
-                    functionfs.getDescriptor(
-                        functionfs.USBEndpointDescriptorNoAudio,
-                        bEndpointAddress=endpoint,
-                        bmAttributes=functionfs.ch9.USB_ENDPOINT_XFER_BULK,
-                        wMaxPacketSize=HS_BULK_MAX_PACKET_SIZE,
-                        bInterval=0,
-                    )
-                )
-            try:
-                super(FunctionFSTestDevice, self).__init__(
-                    path,
-                    fs_list=fs_list,
-                    hs_list=hs_list,
-#                    ss_list=DESC_LIST,
-                    lang_dict={
-                        0x0409: [
-                            common.INTERFACE_NAME,
-                        ],
-                    },
-                )
-            except IOError as exc:
-                if exc.errno != errno.EINVAL:
-                    raise
-                ep_list.pop()
-            else:
-                print('Succeeded with', len(ep_list), 'endpoints')
-                break
-        if not ep_list:
-            # pylint: disable=misplaced-bare-raise
-            raise
-            # pylint: enable=misplaced-bare-raise
+            )
+        super(FunctionFSTestDevice, self).__init__(
+            path,
+            fs_list=fs_list,
+            hs_list=hs_list,
+#            ss_list=DESC_LIST,
+            lang_dict={
+                0x0409: [
+                    common.INTERFACE_NAME,
+                ],
+            },
+        )
+        self.__ep_count = len(ep_list)
         self.__echo_payload = 'NOT SET'
-        assert len(self._ep_list) == len(ep_list) + 1
+
+    def __enter__(self):
+        result = super(FunctionFSTestDevice, self).__enter__()
+        assert len(self._ep_list) == self.__ep_count + 1
         thread_list = self.__thread_list = []
         for ep_file in self._ep_list[1:]:
             thread_list.append(
@@ -151,6 +139,7 @@ class FunctionFSTestDevice(functionfs.Function):
                     method=getattr(ep_file, 'readinto' if ep_file.readable() else 'write'),
                 )
             )
+        return result
 
     def onEnable(self):
         print('functionfs: ENABLE')
@@ -215,8 +204,8 @@ class FunctionFSTestDevice(functionfs.Function):
                 request_type, request, value, index, length,
             )
 
-def main(path):
-    with FunctionFSTestDevice(path) as function:
+def main(path, ep_pair_count=15):
+    with FunctionFSTestDevice(path, int(ep_pair_count)) as function:
         print('Servicing functionfs events forever...')
         try:
             function.processEventsForever()
