@@ -53,4 +53,5 @@ setup(
         'Topic :: System :: Hardware :: Hardware Drivers',
     ],
     cmdclass=versioneer.get_cmdclass(),
+    use_2to3=True,
 )

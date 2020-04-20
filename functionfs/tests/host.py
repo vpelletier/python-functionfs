@@ -61,7 +61,7 @@ def main():
                 common.REQUEST_STALL,
                 0,
                 0,
-                'a',
+                b'a',
             )
         except usb1.USBErrorPipe:
             pass
@@ -86,7 +86,7 @@ def main():
             common.REQUEST_ECHO,
             0,
             0,
-            'foo bar baz',
+            b'foo bar baz',
         )
         print(repr(handle.controlRead(
             usb1.TYPE_VENDOR | usb1.RECIPIENT_INTERFACE,
