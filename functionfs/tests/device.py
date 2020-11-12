@@ -154,7 +154,10 @@ class FunctionFSTestDevice(functionfs.Function):
 
     def onEnable(self):
         print('functionfs: ENABLE')
-        print('Real interface 0:', self.ep0.getRealInterfaceNumber(0))
+        try:
+            print('Real interface 0:', self.ep0.getRealInterfaceNumber(0))
+        except IOError:
+            pass
         for ep_file in self._ep_list[1:]:
             print(ep_file.name + ':')
             descriptor = ep_file.getDescriptor()
