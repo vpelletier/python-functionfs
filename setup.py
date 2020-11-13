@@ -39,7 +39,7 @@ setup(
         'ioctl-opt',
     ],
     tests_require=[
-        'python-libusb1',
+        'libusb1',
     ],
     classifiers=[
         'Intended Audience :: Developers',
