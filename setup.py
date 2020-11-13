@@ -38,7 +38,7 @@ setup(
     install_requires=[
         'ioctl-opt',
     ],
-    tests_requires=[
+    tests_require=[
         'python-libusb1',
     ],
     classifiers=[
