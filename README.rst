@@ -11,3 +11,5 @@ Requirements
 
 - The linux kernel built with CONFIG_USB_CONFIGFS_F_FS enabled,
   plus all needed peripheral drivers, including the usb device controller.
+
+- python-libaio, which itself depends on libaio.
