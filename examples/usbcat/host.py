@@ -74,6 +74,8 @@ def main():
         )
         def sender():
             buf = sys.stdin.read(BUF_SIZE)
+            if not buf:
+                raise EOFError
             print('sending', len(buf), 'bytes', file=sys.stderr)
             handle.bulkWrite(to_device, buf)
         def onReceive(transfer):
