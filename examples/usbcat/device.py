@@ -15,14 +15,18 @@
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import print_function
+import argparse
 from collections import deque
 import errno
 import fcntl
 import functools
 import os
+import pwd
 import select
+import signal
 import sys
 import functionfs
+from functionfs.gadget import Gadget, SubprocessFunction
 import functionfs.ch9
 
 # Large-ish buffer, to tolerate bursts without becoming a context switch storm.
@@ -152,31 +156,79 @@ class USBCat(functionfs.Function):
         self.__onCannotSend()
         super(USBCat, self).onDisable()
 
-def main(path):
-    epoll = select.epoll(3)
-    def sender():
-        # Note: readinto (from io module) would avoid at least one memory copy,
-        # but python2 memoryview-of-bytearray incompatibility with
-        # ctypes' from_buffer means the buffer would have to have the right
-        # size before we know how many bytes we are reading.
-        # So just read and convert into the mutable buffer required by submit.
-        buf = bytearray(sys.stdin.read(BUF_SIZE))
-        trace('queuing', len(buf), 'bytes')
-        in_ep_submit([buf])
+    def onSuspend(self):
+        trace('onSuspend')
+        super(USBCat, self).onSuspend()
 
-    def stopSender():
+    def onResume(self):
+        trace('onResume')
+        super(USBCat, self).onResume()
+
+class SubprocessCat(SubprocessFunction):
+    __epoll = None
+
+    def __init__(self, **kw):
+        super(SubprocessCat, self).__init__(
+            getFunction=self.__getFunction,
+            **kw
+        )
+        self.__out_encoding = getattr(sys.stdout, 'encoding', None)
+
+    def __getFunction(self, path): # pylint: disable=method-hidden
+        return USBCat(
+            path=path,
+            writer=self.__writer,
+            onCanSend=self.__onCanSend,
+            onCannotSend=self.__stopSender,
+        )
+
+    def __writer(self, value):
+        sys.stdout.write(
+            value
+            if self.__out_encoding is None else
+            value.decode('utf-8', errors='replace')
+        )
+
+    def __onCanSend(self):
+        self.__epoll.register(sys.stdin, select.EPOLLIN)
+
+    def __stopSender(self):
         try:
-            epoll.unregister(sys.stdin)
+            self.__epoll.unregister(sys.stdin)
         except IOError as exc:
             if exc.errno != errno.ENOENT:
                 raise
-    with USBCat(
-        path,
-        sys.stdout.write,
-        onCanSend=lambda: epoll.register(sys.stdin, select.EPOLLIN),
-        onCannotSend=stopSender,
-    ) as function:
-        in_ep_submit = function.in_ep
+
+    def __call__(self, *args, **kw):
+        result = super(SubprocessCat, self).__call__(*args, **kw)
+        # Let the subprocess get all the input.
+        sys.stdin.close()
+        return result
+
+    def run(self):
+        """
+        This implementation does not call SubprocessFunction.run, as it
+        implements its own event handling loop involving function's file
+        descriptors.
+        """
+        self.__epoll = epoll = select.epoll(3)
+        def sender():
+            # Note: readinto (from io module) would avoid at least one memory copy,
+            # but python2 memoryview-of-bytearray incompatibility with
+            # ctypes' from_buffer means the buffer would have to have the right
+            # size before we know how many bytes we are reading.
+            # So just read and convert into the mutable buffer required by submit.
+            value = sys.stdin.read(BUF_SIZE)
+            if not value:
+                raise EOFError
+            encode = getattr(value, 'encode', None)
+            if encode is not None:
+                value = value.encode('utf-8', errors="replace")
+            buf = bytearray(value)
+            trace('queuing', len(buf), 'bytes')
+            in_ep_submit([buf])
+        function = self.function
+        in_ep_submit = function.in_ep.submit
         fcntl.fcntl(
             sys.stdin,
             fcntl.F_SETFL,
@@ -202,5 +254,74 @@ def main(path):
         except (KeyboardInterrupt, EOFError):
             pass
 
+def main():
+    parser = argparse.ArgumentParser(
+        description='Example implementation of an USB gadget establishing '
+        'a bidirectional pipe with the host.',
+        epilog='Requires CAP_SYS_ADMIN in order to mount the required '
+        'functionfs filesystem, and libcomposite kernel module to be '
+        'loaded (or built-in).',
+    )
+    parser.add_argument(
+        '--udc',
+        help='Name of the UDC to use (default: autodetect)',
+    )
+    parser.add_argument(
+        '--username',
+        help='Run function under this user. For improved security.',
+    )
+    args = parser.parse_args()
+    if args.username is None:
+        uid = gid = None
+    else:
+        passwd = pwd.getpwnam(args.username)
+        uid = passwd.pw_uid
+        gid = passwd.pw_gid
+    def raiseKeyboardInterrupt(signal_number, stack_frame):
+        _ = signal_number # Silence pylint
+        _ = stack_frame # Silence pylint
+        raise KeyboardInterrupt
+    with Gadget(
+        udc=args.udc,
+        config_list=[
+            {
+                'function_list': [
+                    {
+                        'function': SubprocessCat(
+                            uid=uid,
+                            gid=gid,
+                        ),
+                        'mount': {
+                            'uid': uid,
+                            'gid': gid,
+                        },
+                    },
+                ],
+                'MaxPower': 500,
+                'lang_dict': {
+                    0x409: {
+                        'configuration': 'cat demo function',
+                    },
+                },
+            }
+        ],
+        idVendor=0x1d6b, # Linux Foundation
+        idProduct=0x0104, # Multifunction Composite Gadget
+        lang_dict={
+            0x409: {
+                'product': 'cat demo',
+                'manufacturer': 'python-functionfs',
+            },
+        },
+    ):
+        signal.signal(signal.SIGCHLD, raiseKeyboardInterrupt)
+        try:
+            while True:
+                signal.pause()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+
 if __name__ == '__main__':
-    main(*sys.argv[1:])
+    main()
