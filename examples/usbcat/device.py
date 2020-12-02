@@ -60,6 +60,7 @@ class EndpointINFile(functionfs.EndpointINFile):
                 trace('send queue has room, resume sending')
                 self.__onCanSend()
             return buffer_list
+        return None
 
     def onSubmitEAGAIN(self, buffer_list, user_data):
         self.__stranded_buffer_list_queue.append(buffer_list)
@@ -70,6 +71,8 @@ class EndpointINFile(functionfs.EndpointINFile):
         self.__stranded_buffer_list_queue.clear()
 
 class USBCat(functionfs.Function):
+    in_ep = None
+
     def __init__(self, path, writer, onCanSend, onCannotSend):
         fs_list, hs_list, ss_list = functionfs.getInterfaceInAllSpeeds(
             interface={
