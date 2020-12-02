@@ -31,7 +31,7 @@ import tempfile
 
 __all__ = (
     'Gadget',
-    'ForkingFunction', # TODO: rename
+    'SubprocessFunction',
 )
 
 _libc = ctypes.CDLL(
@@ -39,6 +39,8 @@ _libc = ctypes.CDLL(
     use_errno=True,
 )
 def _checkCCall(result, func, args):
+    _ = func # Silence pylint
+    _ = args # Silence pylint
     if result < 0:
         raise OSError(ctypes.get_errno())
 _mount = _libc.mount
@@ -61,6 +63,19 @@ _umount.errcheck = _checkCCall
 _READY_MARKER = b'ready'
 
 class Gadget(object):
+    """
+    Declare a gadget, with the strings, configurations, and functions it
+    is composed of. Start these functions, and once all are ready, attach
+    the gadget definition to a UDC (USB Device Controller).
+
+    Instances of this class are context managers. The work done in __enter__
+    and __exit__ (writing to configfs, mounting and unmounting functionfs)
+    require elevated privileges (CAP_SYS_ADMIN for {,un}mounting, for example)
+    so this code likely needs to run as root.
+
+    You should consider using SubprocessFunction to wrap all your functions,
+    with an uid and gid so they can drop privileges and not run as root.
+    """
     udb_gadget_path = '/sys/kernel/config/usb_gadget/'
     class_udc_path = '/sys/class/udc/'
 
@@ -79,10 +94,11 @@ class Gadget(object):
         udc=None,
     ):
         """
-        Declare a gadget, with the strings, configurations, and functions it
-        is composed of.
+        Declare a gadget.
+        Arguments follow the structure of ${configfs}/usb_gadget/ .
 
         config_list
+            Schema:
             [
                 {
                     'function_list': [
@@ -130,6 +146,7 @@ class Gadget(object):
                 },
                 ...
             ]
+
         idVendor (int, None)
         idProduct (int, None)
         bcdDevice (int, None)
@@ -137,6 +154,13 @@ class Gadget(object):
         bDeviceProtocol (int, None)
         bDeviceClass (int, None)
         bDeviceSubclass (int, None)
+            See the USB specification for device descriptors.
+            If None, the kernel default will be used.
+            Some of these default values may prevent the gadget from working
+            on some hosts: as of this writing, idVendor and idProduct both
+            default to zero, and USB devices with these values do not get
+            enabled after enumeration on a Linux host.
+
         lang_dict (dict)
             Keys: language id (ex: 0x0409 for "us-en").
             Values: dicts
@@ -156,15 +180,7 @@ class Gadget(object):
             udc = os.path.basename(udc)
         elif not os.path.exists(os.path.join(self.class_udc_path, udc)):
             raise ValueError('No such UDC')
-        self.__udc = udc + '\n'
-        # Strictly, it is enough to load libcomposite, usb_f_fs is auto-loaded
-        # but this should give a clearer error if usb_f_fs is missing.
-        #with open('/proc/filesystems') as filesystems:
-        #    if '\tfunctionfs\n' not in filesystems.read():
-        #        raise ValueError(
-        #            'functionfs is not in /proc/filesystems - '
-        #            'have you loaded usb_f_fs module ?',
-        #        )
+        self.__udc = udc
         self.__config_list = list(enumerate(
             (
                 {
@@ -271,21 +287,26 @@ class Gadget(object):
         return result
 
     def __enter__(self):
+        """
+        Write prepared gadget layout to configfs, mount corresponding
+        functionfs, start endpoint functions, and attach the gadget to a UDC.
+        """
         try:
             self.__enter()
         except Exception:
             self.__unenter()
             raise
+        return self
 
     def __enter(self):
         dir_list = self.__dir_list
         link_list = self.__link_list
-        def symlink(source, destination):
+        def symlink(source, destination): # pylint: disable=missing-docstring
             os.symlink(source, destination)
             link_list.append(destination)
-        def mkdir(path):
-            dir_list.append(path)
+        def mkdir(path): # pylint: disable=missing-docstring
             os.mkdir(path)
+            dir_list.append(path)
         name = self.__name
         if name is None:
             name = tempfile.mkdtemp(
@@ -361,12 +382,18 @@ class Gadget(object):
         self.__udc_path = udc_path = os.path.join(name, 'UDC')
         with open(udc_path, 'w') as udc:
             udc.write(self.__udc)
-        return self
 
     def __exit__(self, exc_type, exc_value, tb):
         self.__unenter()
 
     def __unenter(self):
+        # configfs cleanup is convoluted and rather surprising if it has to
+        # be done by the user (ex: rmdir on non-empty directories whose content
+        # refuse to be individualy removed). So catch and report (to stderr)
+        # exceptions which may come from code out of this module, and continue
+        # the teardown.
+        # Should the cleanup actually fail, this will give the user the list
+        # of operations to do and the order to follow.
         name = self.__real_name
         if not name:
             return
@@ -376,10 +403,28 @@ class Gadget(object):
                 udc.write(b'')
         mountpoint_dict = self.__mountpoint_dict
         noop = lambda: None
-        for mountpoint_attr_dict in mountpoint_dict.itervalues():
-            mountpoint_attr_dict.get('kill', noop)()
         for mountpoint, mountpoint_attr_dict in mountpoint_dict.iteritems():
-            mountpoint_attr_dict.get('join', noop)()
+            try:
+                mountpoint_attr_dict.get('kill', noop)()
+            except Exception: # pylint: disable=broad-except
+                print(
+                    'Exception caught while killing function %r' % (
+                        mountpoint,
+                    ),
+                    file=sys.stderr,
+                )
+                traceback.print_exc()
+        for mountpoint, mountpoint_attr_dict in mountpoint_dict.iteritems():
+            try:
+                mountpoint_attr_dict.get('join', noop)()
+            except Exception: # pylint: disable=broad-except
+                print(
+                    'Exception caught while joining function %r' % (
+                        mountpoint,
+                    ),
+                    file=sys.stderr,
+                )
+                traceback.print_exc()
             try:
                 _umount(mountpoint)
             except OSError as exc:
@@ -413,7 +458,7 @@ class Gadget(object):
                 )
         self.__real_name = None
 
-class ForkingFunction(object):
+class SubprocessFunction(object):
     """
     Instances of this class can be used by Gadget.
 
@@ -434,7 +479,7 @@ class ForkingFunction(object):
         gid (int, None)
             Group id to drop privileges to.
         """
-        super(ForkingFunction, self).__init__()
+        super(SubprocessFunction, self).__init__()
         self.__getFunction = getFunction
         self.__uid = uid
         self.__gid = gid
@@ -451,12 +496,12 @@ class ForkingFunction(object):
         )
         process.start()
         os.close(write_pipe)
-        def wait():
+        def wait(): # pylint: disable=missing-docstring
             with os.fdopen(read_pipe, 'rb', 0) as read_pipef:
                 read_pipef.read(len(_READY_MARKER))
         return (
             wait,
-            lambda: os.kill(process.pid, signal.SIGQUIT),
+            lambda: os.kill(process.pid, signal.SIGINT),
             process.join,
         )
 
@@ -479,7 +524,8 @@ class ForkingFunction(object):
             except Exception:
                 # Print traceback before closing write_pipe: parent process may
                 # still be waiting for us, in which case it will send us a
-                # SIGQUIT very soon after, possibly hiding this error.
+                # SIGINT very soon after closing the pipe as part of its own
+                # teardown, possibly hiding this error.
                 if not ready_signaled:
                     traceback.print_exc()
                 # And, in any case, propagate the exception.
