@@ -1,3 +1,6 @@
+[MASTER]
+ignore=_version.py
+
 [MESSAGES CONTROL]
 disable=C0103,C0330,R0903,R0913,R0914,R0912
 # C0103 "Invalid name "%s" (should match %s)"
