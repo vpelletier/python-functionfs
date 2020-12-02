@@ -21,7 +21,6 @@ from __future__ import absolute_import, print_function
 import ctypes
 import ctypes.util
 import errno
-import multiprocessing
 import os
 import signal
 import sys
@@ -467,6 +466,9 @@ class SubprocessFunction(object):
     NOTE: changes working directory to / in the subprocess (like any
     well-behaved service), beware of relative paths !
     """
+    __pid = None
+    function = None
+
     def __init__(self, getFunction, uid=None, gid=None):
         """
         getFunction ((path) -> Function)
@@ -483,34 +485,21 @@ class SubprocessFunction(object):
         self.__getFunction = getFunction
         self.__uid = uid
         self.__gid = gid
-        self.function = None
 
     def __call__(self, mountpoint):
+        """
+        Start the subprocess.
+        In the subprocess: change user, create the function and store it as
+        self.function, enter it, signal readiness to parent process and call
+        self.run().
+        In the parent process: return the callables expected by Gadget.
+        """
         read_pipe, write_pipe = os.pipe()
-        process = multiprocessing.Process(
-            target=self.__run,
-            kwargs={
-                'mountpoint': mountpoint,
-                'write_pipe': write_pipe,
-            },
-        )
-        process.start()
-        os.close(write_pipe)
-        def wait(): # pylint: disable=missing-docstring
-            with os.fdopen(read_pipe, 'rb', 0) as read_pipef:
-                read_pipef.read(len(_READY_MARKER))
-        return (
-            wait,
-            lambda: os.kill(process.pid, signal.SIGINT),
-            process.join,
-        )
-
-    def __run(self, mountpoint, write_pipe):
-        # Note: keeps the pipe open for longer than needed, but ensures that
-        # it does get closed.
-        with os.fdopen(write_pipe, 'wb', 0) as write_pipef:
-            ready_signaled = False
+        self.__pid = pid = os.fork()
+        if pid == 0:
             try:
+                status = os.EX_OK
+                os.close(read_pipe)
                 os.chdir('/')
                 if self.__gid is not None:
                     os.setgid(self.__gid)
@@ -518,20 +507,29 @@ class SubprocessFunction(object):
                     os.setuid(self.__uid)
                 self.function = function = self.__getFunction(path=mountpoint)
                 with function:
-                    write_pipef.write(_READY_MARKER)
-                    ready_signaled = True
+                    os.write(write_pipe, _READY_MARKER)
                     self.run()
-            except Exception:
-                # Print traceback before closing write_pipe: parent process may
-                # still be waiting for us, in which case it will send us a
-                # SIGINT very soon after closing the pipe as part of its own
-                # teardown, possibly hiding this error.
-                if not ready_signaled:
-                    traceback.print_exc()
-                # And, in any case, propagate the exception.
-                raise
+            except: # pylint: disable=bare-except
+                traceback.print_exc()
+                status = os.EX_SOFTWARE
             finally:
-                self.function = None
+                os.close(write_pipe)
+                os._exit(status) # pylint: disable=protected-access
+        os.close(write_pipe)
+        def wait(): # pylint: disable=missing-docstring
+            with os.fdopen(read_pipe, 'rb', 0) as read_pipef:
+                read_pipef.read(len(_READY_MARKER))
+        return (
+            wait,
+            self.__kill,
+            self.__join,
+        )
+
+    def __kill(self):
+        os.kill(self.__pid, signal.SIGINT)
+
+    def __join(self):
+        os.waitpid(self.__pid, 0)
 
     def run(self):
         """
