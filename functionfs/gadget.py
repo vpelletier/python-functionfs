@@ -340,8 +340,13 @@ class Gadget(object):
         while wait_list:
             wait_list.pop()()
         self.__udc_path = udc_path = os.path.join(name, 'UDC')
-        with open(udc_path, 'w') as udc:
-            udc.write(self.__udc)
+        try:
+            with open(udc_path, 'w') as udc:
+                udc.write(self.__udc)
+        except OSError as exc:
+            if exc.errno == 524: # ENOTSUPP, which is not ENOTSUP
+                exc.strerror = 'UDC cannot allocate this many endpoints'
+            raise
 
     def __exit__(self, exc_type, exc_value, tb):
         self.__unenter()
