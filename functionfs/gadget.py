@@ -18,10 +18,12 @@ Interfaces with /sys/kernel/config/usb_gadget/ to setup an USB gadget capable
 of hosting functions.
 """
 from __future__ import absolute_import, print_function
+import argparse
 import ctypes
 import ctypes.util
 import errno
 import os
+import pwd
 import signal
 import sys
 import traceback
@@ -30,6 +32,7 @@ import tempfile
 
 __all__ = (
     'Gadget',
+    'GadgetSubprocessManager',
     'ConfigFunctionBase',
     'ConfigFunctionSubprocess',
 )
@@ -414,6 +417,105 @@ class Gadget(object):
                     file=sys.stderr,
                 )
         self.__real_name = None
+
+class _UsernameAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        passwd = pwd.getpwnam(values)
+        namespace.uid = passwd.pw_uid
+        namespace.gid = passwd.pw_gid
+
+class GadgetSubprocessManager(Gadget):
+    """
+    A Gadget subclass aimed at reducing boilerplate code when using
+    ConfigFunctionSubprocess.
+
+    Installs a SIGCHLD handler which raises KeyboardInterrupt, and make
+    __exit__ suppress this exception.
+    """
+    @staticmethod
+    def getArgumentParser(**kw):
+        """
+        Create an argument parser with --udc, --uid, --gid and --username
+        arguments.
+        Arguments are passed to argparse.ArgumentParser .
+        """
+        parser = argparse.ArgumentParser(
+            epilog='Requires CAP_SYS_ADMIN in order to mount the required '
+            'functionfs filesystem, and libcomposite kernel module to be '
+            'loaded (or built-in).',
+            **kw
+        )
+        parser.add_argument(
+            '--udc',
+            help='Name of the UDC to use (default: autodetect)',
+        )
+        parser.add_argument(
+            '--uid',
+            type=int,
+            help='User to run function as',
+        )
+        parser.add_argument(
+            '--gid',
+            type=int,
+            help='Group to run function as',
+        )
+        parser.add_argument(
+            '--username',
+            action=_UsernameAction,
+            help="Run function under this user's uid and gid",
+        )
+        return parser
+
+    def __init__(self, args, config_list, **kw):
+        """
+        args (namespace obtained from parse_args)
+            To retrieve uid, gid and udc.
+        config_list
+            Unlike Gadget.__init__, functions must be callables returning the
+            function instance, and not function instances directly.
+            This callable will receive uid and gid named arguments with values
+            received from args.
+        Everything else is passed to Gadget.__init__ .
+        """
+        for config in config_list:
+            config['function_list'] = [
+                x(uid=args.uid, gid=args.gid)
+                for x in config['function_list']
+            ]
+        super().__init__(
+            udc=args.udc,
+            config_list=config_list,
+            **kw
+        )
+
+    def __enter__(self):
+        super(GadgetSubprocessManager, self).__enter__()
+        signal.signal(signal.SIGCHLD, self.__raiseKeyboardInterrupt)
+        return self
+
+    def __exit__(self, exc_type, exc_value, tb):
+        signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+        result = super(
+            GadgetSubprocessManager,
+            self,
+        ).__exit__(exc_type, exc_value, tb)
+        return result or isinstance(exc_value, KeyboardInterrupt)
+
+    @staticmethod
+    def __raiseKeyboardInterrupt(signal_number, stack_frame):
+        """
+        Make gadget exit if function subprocess exits.
+        """
+        _ = signal_number # Silence pylint
+        _ = stack_frame # Silence pylint
+        raise KeyboardInterrupt
+
+    def waitForever(self):
+        """
+        Wait for a signal (including a child exiting).
+        """
+        while True:
+            signal.pause()
 
 class ConfigFunctionBase(object):
     """

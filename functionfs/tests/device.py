@@ -14,16 +14,16 @@
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import print_function
-import argparse
 import errno
 import functools
-import pwd
-import signal
 import socket
 import threading
 import functionfs
 import functionfs.ch9
-from functionfs.gadget import Gadget, ConfigFunctionSubprocess
+from functionfs.gadget import (
+    GadgetSubprocessManager,
+    ConfigFunctionSubprocess,
+)
 from . import common
 
 FS_BULK_MAX_PACKET_SIZE = 64
@@ -209,19 +209,8 @@ class FunctionFSTestDevice(functionfs.Function):
             )
 
 def main():
-    parser = argparse.ArgumentParser(
+    parser = GadgetSubprocessManager.getArgumentParser(
         description='python-functionfs test gadget',
-        epilog='Requires CAP_SYS_ADMIN in order to mount the required '
-        'functionfs filesystem, and libcomposite kernel module to be '
-        'loaded (or built-in).',
-    )
-    parser.add_argument(
-        '--udc',
-        help='Name of the UDC to use (default: autodetect)',
-    )
-    parser.add_argument(
-        '--username',
-        help='Run function under this user. For improved security.',
     )
     parser.add_argument(
         '--ep-count',
@@ -231,29 +220,20 @@ def main():
         'UDC.',
     )
     args = parser.parse_args()
-    if args.username is None:
-        uid = gid = None
-    else:
-        passwd = pwd.getpwnam(args.username)
-        uid = passwd.pw_uid
-        gid = passwd.pw_gid
-    def raiseKeyboardInterrupt(signal_number, stack_frame):
-        _ = signal_number # Silence pylint
-        _ = stack_frame # Silence pylint
-        raise KeyboardInterrupt
-    with Gadget(
-        udc=args.udc,
+    def getConfigFunctionSubprocess(**kw):
+        return ConfigFunctionSubprocess(
+            getFunction=functools.partial(
+                FunctionFSTestDevice,
+                ep_pair_count=args.ep_count,
+            ),
+            **kw
+        )
+    with GadgetSubprocessManager(
+        args=args,
         config_list=[
             {
                 'function_list': [
-                    ConfigFunctionSubprocess(
-                        getFunction=functools.partial(
-                            FunctionFSTestDevice,
-                            ep_pair_count=args.ep_pair_count,
-                        ),
-                        uid=uid,
-                        gid=gid,
-                    ),
+                    getConfigFunctionSubprocess,
                 ],
                 'MaxPower': 500,
                 'lang_dict': {
@@ -272,18 +252,11 @@ def main():
                 'manufacturer': 'Foo Corp.',
             },
         },
-    ):
-        signal.signal(signal.SIGCHLD, raiseKeyboardInterrupt)
-        try:
-            # Note: events are not serviced in this process, but in the process
-            # spawned by ConfigFunctionSubprocess.
-            print('Servicing functionfs events forever...')
-            while True:
-                signal.pause()
-        except KeyboardInterrupt:
-            pass
-        finally:
-            signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+    ) as gadget:
+        # Note: events are not serviced in this process, but in the process
+        # spawned by ConfigFunctionSubprocess.
+        print('Servicing functionfs events forever...')
+        gadget.waitForever()
 
 if __name__ == '__main__':
     main()

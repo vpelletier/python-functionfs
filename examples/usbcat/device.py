@@ -15,18 +15,18 @@
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import print_function
-import argparse
 from collections import deque
 import errno
 import fcntl
 import functools
 import os
-import pwd
 import select
-import signal
 import sys
 import functionfs
-from functionfs.gadget import Gadget, ConfigFunctionSubprocess
+from functionfs.gadget import (
+    GadgetSubprocessManager,
+    ConfigFunctionSubprocess,
+)
 import functionfs.ch9
 
 # Large-ish buffer, to tolerate bursts without becoming a context switch storm.
@@ -251,41 +251,15 @@ class SubprocessCat(ConfigFunctionSubprocess):
             pass
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='Example implementation of an USB gadget establishing '
-        'a bidirectional pipe with the host.',
-        epilog='Requires CAP_SYS_ADMIN in order to mount the required '
-        'functionfs filesystem, and libcomposite kernel module to be '
-        'loaded (or built-in).',
-    )
-    parser.add_argument(
-        '--udc',
-        help='Name of the UDC to use (default: autodetect)',
-    )
-    parser.add_argument(
-        '--username',
-        help='Run function under this user. For improved security.',
-    )
-    args = parser.parse_args()
-    if args.username is None:
-        uid = gid = None
-    else:
-        passwd = pwd.getpwnam(args.username)
-        uid = passwd.pw_uid
-        gid = passwd.pw_gid
-    def raiseKeyboardInterrupt(signal_number, stack_frame):
-        _ = signal_number # Silence pylint
-        _ = stack_frame # Silence pylint
-        raise KeyboardInterrupt
-    with Gadget(
-        udc=args.udc,
+    with GadgetSubprocessManager(
+        args=GadgetSubprocessManager.getArgumentParser(
+            description='Example implementation of an USB gadget establishing '
+            'a bidirectional pipe with the host.',
+        ).parse_args(),
         config_list=[
             {
                 'function_list': [
-                    SubprocessCat(
-                        uid=uid,
-                        gid=gid,
-                    ),
+                    SubprocessCat,
                 ],
                 'MaxPower': 500,
                 'lang_dict': {
@@ -303,15 +277,8 @@ def main():
                 'manufacturer': 'python-functionfs',
             },
         },
-    ):
-        signal.signal(signal.SIGCHLD, raiseKeyboardInterrupt)
-        try:
-            while True:
-                signal.pause()
-        except KeyboardInterrupt:
-            pass
-        finally:
-            signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+    ) as gadget:
+        gadget.waitForever()
 
 if __name__ == '__main__':
     main()

@@ -19,13 +19,12 @@
 Illustration of how to use functionfs to define an HID USB device.
 """
 from __future__ import print_function
-import argparse
 import errno
-import functools
-import pwd
-import signal
 import functionfs
-from functionfs.gadget import Gadget, ConfigFunctionSubprocess
+from functionfs.gadget import (
+    GadgetSubprocessManager,
+    ConfigFunctionSubprocess,
+)
 
 # This is the exact HID mouse descriptor as present in the HID 1.11
 # specification, Appendix E.10
@@ -63,6 +62,13 @@ class Mouse(functionfs.HIDFunction):
     """
     A simple mouse device.
     """
+    def __init__(self, **kw):
+        super(Mouse, self).__init__(
+            report_descriptor=REPORT_DESCRIPTOR,
+            in_report_max_length=len(GO_RIGHT_REPORT),
+            **kw
+        )
+
     def getEndpointClass(self, is_in, descriptor):
         """
         Tall HIDFunction that we want it to use our custom IN endpoint class
@@ -94,50 +100,22 @@ def main():
     """
     Entry point.
     """
-    parser = argparse.ArgumentParser(
+    args = GadgetSubprocessManager.getArgumentParser(
         description='Example implementation of an USB HID gadget emulating a '
         'mouse moving right.',
-        epilog='Requires CAP_SYS_ADMIN in order to mount the required '
-        'functionfs filesystem, and libcomposite kernel module to be '
-        'loaded (or built-in).',
-    )
-    parser.add_argument(
-        '--udc',
-        help='Name of the UDC to use (default: autodetect)',
-    )
-    parser.add_argument(
-        '--username',
-        help='Run function under this user. For improved security.',
-    )
-    args = parser.parse_args()
-    if args.username is None:
-        uid = gid = None
-    else:
-        passwd = pwd.getpwnam(args.username)
-        uid = passwd.pw_uid
-        gid = passwd.pw_gid
-    def raiseKeyboardInterrupt(signal_number, stack_frame):
-        """
-        Make gadget exit if function subprocess exits.
-        """
-        _ = signal_number # Silence pylint
-        _ = stack_frame # Silence pylint
-        raise KeyboardInterrupt
-    with Gadget(
-        udc=args.udc,
+    ).parse_args()
+    def getConfigFunctionSubprocess(**kw):
+        return ConfigFunctionSubprocess(
+            getFunction=Mouse,
+            **kw
+        )
+    with GadgetSubprocessManager(
+        args=args,
         config_list=[
             # A single configuration
             {
                 'function_list': [
-                    ConfigFunctionSubprocess(
-                        getFunction=functools.partial(
-                            Mouse,
-                            report_descriptor=REPORT_DESCRIPTOR,
-                            in_report_max_length=len(GO_RIGHT_REPORT),
-                        ),
-                        uid=uid,
-                        gid=gid,
-                    ),
+                    getConfigFunctionSubprocess,
                 ],
                 'MaxPower': 500,
                 'lang_dict': {
@@ -155,17 +133,12 @@ def main():
                 'manufacturer': 'python-functionfs',
             },
         },
-    ):
-        signal.signal(signal.SIGCHLD, raiseKeyboardInterrupt)
+    ) as gadget:
         print('Gadget ready, waiting for function to exit.')
         try:
-            while True:
-                signal.pause()
-        except KeyboardInterrupt:
-            pass
+            gadget.waitForever()
         finally:
-            signal.signal(signal.SIGCHLD, signal.SIG_DFL)
-        print('Gadget exiting.')
+            print('Gadget exiting.')
 
 if __name__ == '__main__':
     main()
