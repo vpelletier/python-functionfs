@@ -96,6 +96,7 @@ class Gadget(object):
         bDeviceProtocol=None,
         name=None,
         udc=None,
+        os_desc=None,
     ):
         """
         Declare a gadget.
@@ -140,7 +141,11 @@ class Gadget(object):
             Name of the UDC to use for this gadget.
             If None, there must be exactly one UDC in /sys/class/udc/, which
             will be then used.
-        TODO: os desc ?
+        os_desc (dict, None)
+            If dict, it must contain both of the following keys:
+            'b_vendor_code': integer in 0..255 range (inclusive).
+            'qw_sign': unicode object, must be possible to encode to utf-8 and
+            fit in 7 bytes.
         """
         if udc is None:
             udc, = os.listdir(self.class_udc_path)
@@ -202,6 +207,15 @@ class Gadget(object):
             }.iteritems()
             if value is not None
         }
+        self.__os_desc = (
+            ()
+            if os_desc is None else
+            (
+                ('b_vendor_code', os_desc['b_vendor_code'].to_bytes(1, 'big')),
+                ('qw_sign', os_desc['qw_sign'].encode('utf-8')),
+                ('use', b'1'),
+            )
+        )
         self.__name = name
         self.__real_name = None # chosen on __enter__
         self.__mountpoint_dict = {}
@@ -265,6 +279,9 @@ class Gadget(object):
             name = os.path.join(self.udb_gadget_path, name)
             mkdir(name)
         self.__real_name = name
+        for key, value in self.__os_desc:
+            with open(os.path.join(name, key), 'wb') as desc_file:
+                desc_file.write(value)
         dir_list.extend(self.__writeLangDict(name, self.__lang_dict))
         self.__writeAttributeDict(name, self.__attribute_dict)
         function_list = []
