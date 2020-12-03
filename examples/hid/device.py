@@ -90,15 +90,6 @@ class Mouse(functionfs.HIDFunction):
             (GO_RIGHT_REPORT, ),
         )
 
-class SubprocessMouse(SubprocessFunction):
-    """
-    Just to illustrate subclassing SubprocessFunction.
-    """
-    def run(self):
-        print('Function ready, processing USB events.')
-        super(SubprocessMouse, self).run()
-        print('Function exiting normaly.')
-
 def main():
     """
     Entry point.
@@ -139,7 +130,7 @@ def main():
             {
                 'function_list': [
                     { # A single function
-                        'function': SubprocessMouse(
+                        'function': SubprocessFunction(
                             getFunction=functools.partial(
                                 Mouse,
                                 report_descriptor=REPORT_DESCRIPTOR,
