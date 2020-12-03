@@ -26,7 +26,7 @@ import select
 import signal
 import sys
 import functionfs
-from functionfs.gadget import Gadget, SubprocessFunction
+from functionfs.gadget import Gadget, ConfigFunctionSubprocess
 import functionfs.ch9
 
 # Large-ish buffer, to tolerate bursts without becoming a context switch storm.
@@ -164,17 +164,14 @@ class USBCat(functionfs.Function):
         trace('onResume')
         super(USBCat, self).onResume()
 
-class SubprocessCat(SubprocessFunction):
+class SubprocessCat(ConfigFunctionSubprocess):
     __epoll = None
 
     def __init__(self, **kw):
-        super(SubprocessCat, self).__init__(
-            getFunction=self.__getFunction,
-            **kw
-        )
+        super(SubprocessCat, self).__init__(**kw)
         self.__out_encoding = getattr(sys.stdout, 'encoding', None)
 
-    def __getFunction(self, path): # pylint: disable=method-hidden
+    def getFunction(self, path):
         return USBCat(
             path=path,
             writer=self.__writer,
@@ -199,15 +196,14 @@ class SubprocessCat(SubprocessFunction):
             if exc.errno != errno.ENOENT:
                 raise
 
-    def __call__(self, *args, **kw):
-        result = super(SubprocessCat, self).__call__(*args, **kw)
+    def start(self, *args, **kw):
+        super(SubprocessCat, self).start(*args, **kw)
         # Let the subprocess get all the input.
         sys.stdin.close()
-        return result
 
     def run(self):
         """
-        This implementation does not call SubprocessFunction.run, as it
+        This implementation does not call ConfigFunctionSubprocess.run, as it
         implements its own event handling loop involving function's file
         descriptors.
         """
@@ -286,16 +282,10 @@ def main():
         config_list=[
             {
                 'function_list': [
-                    {
-                        'function': SubprocessCat(
-                            uid=uid,
-                            gid=gid,
-                        ),
-                        'mount': {
-                            'uid': uid,
-                            'gid': gid,
-                        },
-                    },
+                    SubprocessCat(
+                        uid=uid,
+                        gid=gid,
+                    ),
                 ],
                 'MaxPower': 500,
                 'lang_dict': {

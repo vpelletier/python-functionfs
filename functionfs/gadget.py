@@ -30,7 +30,8 @@ import tempfile
 
 __all__ = (
     'Gadget',
-    'SubprocessFunction',
+    'ConfigFunctionBase',
+    'ConfigFunctionSubprocess',
 )
 
 _libc = ctypes.CDLL(
@@ -72,8 +73,9 @@ class Gadget(object):
     require elevated privileges (CAP_SYS_ADMIN for {,un}mounting, for example)
     so this code likely needs to run as root.
 
-    You should consider using SubprocessFunction to wrap all your functions,
-    with an uid and gid so they can drop privileges and not run as root.
+    You should consider using ConfigFunctionSubprocess to wrap all your
+    functions, with an uid and gid so they can drop privileges and not run as
+    root.
     """
     udb_gadget_path = '/sys/kernel/config/usb_gadget/'
     class_udc_path = '/sys/class/udc/'
@@ -96,56 +98,19 @@ class Gadget(object):
         Declare a gadget.
         Arguments follow the structure of ${configfs}/usb_gadget/ .
 
-        config_list
-            Schema:
-            [
-                {
-                    'function_list': [
-                        {
-                            # function is a callable object, which takes its
-                            # functionfs mountpoint path as a named argument,
-                            # and returns 3 callables.
-                            'function': (mountpoint) -> (
-                                # Must block until the function has opened all
-                                # its endpoint files.
-                                () -> None,
-                                # Must tell the function to start winding down.
-                                # ex: kill
-                                () -> None,
-                                # Must block until the function has closed all
-                                # its endpoint files.
-                                # ex: join
-                                () -> None,
-                            ),
-                            'mount': { # optional
-                                'uid': (int), # user owner
-                                'gid': (int), # group owner
-                                'rmode': (int), # root dir mode
-                                'fmode': (int), # files mode
-                                'mode': (int), # both of the above
-                                # When false and this function process
-                                # closes an endpoint file (ex: process exited),
-                                # the whole gadget gets forcibly disconnected
-                                # from the host. Setting this true lets the
-                                # rest of the gadget continue to work, and
-                                # let the kernel reject all transfers to this
-                                # function.
-                                'no_disconnect': (bool),
-                            },
-                        },
-                        ...
-                    ],
-                    'bmAttributes': int, # optional
-                    'MaxPower': int, # optional
-                    'lang_dict': { # optional
-                        0x0409: {
-                            'configuration': u'...',
-                        },
-                    },
-                },
-                ...
-            ]
-
+        config_list (list of dicts)
+            Describes a gadget configuration. Each dict may have the following
+            items:
+            function_list (required, list of ConfigFunctionBase instances)
+                Described an USB function and allow controling its run cycle.
+            bmAttributes (optional, int)
+            MaxPower (optional, int)
+                See the USB specification for Configuration descriptors.
+            lang_dict (optional, dict)
+                Keys: language (int)
+                Values: messages for the language (dict)
+                    Keys: 'configuration'
+                    Values: unicode object
         idVendor (int, None)
         idProduct (int, None)
         bcdDevice (int, None)
@@ -183,27 +148,7 @@ class Gadget(object):
         self.__config_list = list(enumerate(
             (
                 {
-                    'function_list': tuple(enumerate(
-                        {
-                            'function': function_dict['function'],
-                            'mount': b','.join(
-                                b'%s=%i' % (
-                                    key.encode('ascii'),
-                                    cast(function_dict['mount'][key]),
-                                )
-                                for key, cast in (
-                                    ('uid', int),
-                                    ('gid', int),
-                                    ('rmode', int),
-                                    ('fmode', int),
-                                    ('mode', int),
-                                    ('no_disconnect', bool),
-                                )
-                                if function_dict['mount'].get(key) is not None
-                            )
-                        }
-                        for function_dict in config_dict['function_list']
-                    )),
+                    'function_list': tuple(enumerate(config_dict['function_list'])),
                     'attribute_dict': {
                         attribute_name: cast(
                             config_dict[attribute_name],
@@ -345,6 +290,21 @@ class Gadget(object):
                 function_list.append((
                     function_name,
                     function,
+                    b','.join(
+                        b'%s=%i' % (
+                            key.encode('ascii'),
+                            cast(function.mount_dict[key]),
+                        )
+                        for key, cast in (
+                            ('uid', int),
+                            ('gid', int),
+                            ('rmode', int),
+                            ('fmode', int),
+                            ('mode', int),
+                            ('no_disconnect', bool),
+                        )
+                        if function.mount_dict.get(key) is not None
+                    ),
                 ))
                 mkdir(function_path)
                 symlink(
@@ -356,7 +316,7 @@ class Gadget(object):
                 )
         mountpoint_dict = self.__mountpoint_dict
         wait_list = []
-        for function_name, function in function_list:
+        for function_name, function, mount_options in function_list:
             mountpoint = tempfile.mkdtemp(
                 prefix='ffs.' + function_name + '_',
             )
@@ -368,14 +328,12 @@ class Gadget(object):
                 b_mountpoint,
                 b'functionfs',
                 0,
-                function['mount'],
+                mount_options,
             )
-            wait_function_ready, kill_function, join_function = function['function'](
-                mountpoint=mountpoint,
-            )
-            mountpoint_attr_dict['kill'] = kill_function
-            mountpoint_attr_dict['join'] = join_function
-            wait_list.append(wait_function_ready)
+            function.start(mountpoint=mountpoint)
+            mountpoint_attr_dict['kill'] = function.kill
+            mountpoint_attr_dict['join'] = function.join
+            wait_list.append(function.wait)
         while wait_list:
             wait_list.pop()()
         self.__udc_path = udc_path = os.path.join(name, 'UDC')
@@ -457,82 +415,166 @@ class Gadget(object):
                 )
         self.__real_name = None
 
-class SubprocessFunction(object):
+class ConfigFunctionBase(object):
     """
-    Instances of this class can be used by Gadget.
+    Base class for gadget functions.
+    """
+    def __init__(
+        self,
+        getFunction=None,
+        uid=None,
+        gid=None,
+        rmode=None,
+        fmode=None,
+        mode=None,
+        no_disconnect=None,
+    ):
+        """
+        getFunction ((path) -> functionfs.Function)
+            If non-None, overrides self.getFunction.
+        uid (int, None)
+            User id to drop privileges to.
+        gid (int, None)
+            Group id to drop privileges to.
+        rmode (int)
+            FunctionFS mountpoint root directory mode.
+        fmode (int)
+            FunctionFS endpoint file mode.
+        mode (int)
+            Sets both fmode and rmode.
+        no_disconnect (bool)
+            When false and this function closes an endpoint file
+            (ex: subprocess exited), the whole gadget gets forcibly
+            disconnected from its USB host. Setting this true lets the
+            rest of the gadget continue to work, and tells the kernel to reject
+            all transfers to this function.
+        """
+        super(ConfigFunctionBase, self).__init__()
+        if getFunction is not None:
+            self.getFunction = getFunction
+        self._uid = uid
+        self._gid = gid
+        self._rmode = rmode
+        self._fmode = fmode
+        self._mode = mode
+        self._no_disconnect = no_disconnect
+        self.mount_dict = {
+            key: value
+            for key, value in (
+                ('uid', uid),
+                ('gid', gid),
+                ('rmode', rmode),
+                ('fmode', fmode),
+                ('mode', mode),
+                ('no_disconnect', no_disconnect),
+            )
+            if value is not None
+        }
 
-    Starts a subprocess changing user and group and calling
-    "run" method.
+    @staticmethod
+    def getFunction(path):
+        """
+        Called during start (if applicable, after forking and dropping
+        privileges). Created function is available as the "function"
+        attribute during "run" method execution.
+
+        If not overridden, constructor's getFunction argument is
+        mandatory.
+        """
+        raise RuntimeError
+
+    def start(self, mountpoint):
+        """
+        Begin function initialisation.
+        """
+        raise NotImplementedError
+
+    def wait(self):
+        """
+        Block until the function is fully initialised.
+        """
+        raise NotImplementedError
+
+    def kill(self):
+        """
+        Tell the function to start winding down.
+        """
+        raise NotImplementedError
+
+    def join(self):
+        """
+        Block until function has closed all its endpoint files.
+        """
+        raise NotImplementedError
+
+class ConfigFunctionSubprocess(ConfigFunctionBase):
+    """
+    Function is isolated in a subprocess, allowing a change of user and group.
     NOTE: changes working directory to / in the subprocess (like any
     well-behaved service), beware of relative paths !
     """
     __pid = None
     function = None
 
-    def __init__(self, getFunction, uid=None, gid=None):
-        """
-        getFunction ((path) -> Function)
-            Called after forking (and, if applicable, after dropping
-            privileges) and before calling the "run" method.
-            Created function is available as the "function"
-            attribute during "run" method execution.
-        uid (int, None)
-            User id to drop privileges to.
-        gid (int, None)
-            Group id to drop privileges to.
-        """
-        super(SubprocessFunction, self).__init__()
-        self.__getFunction = getFunction
-        self.__uid = uid
-        self.__gid = gid
+    def __init__(self, *args, **kw):
+        super(ConfigFunctionSubprocess, self).__init__(*args, **kw)
+        self.__read_pipe, self.__write_pipe = os.pipe()
 
-    def __call__(self, mountpoint):
+    def start(self, mountpoint):
         """
         Start the subprocess.
         In the subprocess: change user, create the function and store it as
-        self.function, enter it, signal readiness to parent process and call
-        self.run().
+        self.function, enter its context, signal readiness to parent process
+        and call self.run().
         In the parent process: return the callables expected by Gadget.
         """
-        read_pipe, write_pipe = os.pipe()
         self.__pid = pid = os.fork()
         if pid == 0:
             try:
                 status = os.EX_OK
-                os.close(read_pipe)
+                os.close(self.__read_pipe)
+                self.__read_pipe = None
                 os.chdir('/')
-                if self.__gid is not None:
-                    os.setgid(self.__gid)
-                if self.__uid is not None:
-                    os.setuid(self.__uid)
-                self.function = function = self.__getFunction(path=mountpoint)
+                if self._gid is not None:
+                    os.setgid(self._gid)
+                if self._uid is not None:
+                    os.setuid(self._uid)
+                self.function = function = self.getFunction(path=mountpoint)
                 with function:
-                    os.write(write_pipe, _READY_MARKER)
+                    os.write(self.__write_pipe, _READY_MARKER)
                     self.run()
             except: # pylint: disable=bare-except
                 traceback.print_exc()
                 status = os.EX_SOFTWARE
             finally:
-                os.close(write_pipe)
+                os.close(self.__write_pipe)
                 os._exit(status) # pylint: disable=protected-access
-        os.close(write_pipe)
-        def wait(): # pylint: disable=missing-docstring
-            with os.fdopen(read_pipe, 'rb', 0) as read_pipef:
-                read_pipef.read(len(_READY_MARKER))
-        return (
-            wait,
-            self.__kill,
-            self.__join,
-        )
+            # Unreachable
+        os.close(self.__write_pipe)
+        self.__write_pipe = None
 
-    def __kill(self):
+    def wait(self):
+        """
+        Block until the function subprocess signalled readiness.
+        """
+        with os.fdopen(self.__read_pipe, 'rb', 0) as read_pipef:
+            read_pipef.read(len(_READY_MARKER))
+
+    def kill(self):
+        """
+        Send the SIGINT signal to function subprocess.
+        """
         os.kill(self.__pid, signal.SIGINT)
 
-    def __join(self):
+    def join(self):
+        """
+        Wait for function subprocess to exit.
+        """
         os.waitpid(self.__pid, 0)
 
     def run(self):
         """
+        Subprocess main code.
         Override this method to do something else than just
             self.function.processEventsForever()
         Catches KeyboardInterrupt.

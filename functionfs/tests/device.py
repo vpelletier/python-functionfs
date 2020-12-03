@@ -23,7 +23,7 @@ import socket
 import threading
 import functionfs
 import functionfs.ch9
-from functionfs.gadget import Gadget, SubprocessFunction
+from functionfs.gadget import Gadget, ConfigFunctionSubprocess
 from . import common
 
 FS_BULK_MAX_PACKET_SIZE = 64
@@ -246,20 +246,14 @@ def main():
         config_list=[
             {
                 'function_list': [
-                    {
-                        'function': SubprocessFunction(
-                            getFunction=functools.partial(
-                                FunctionFSTestDevice,
-                                ep_pair_count=args.ep_pair_count,
-                            ),
-                            uid=uid,
-                            gid=gid,
+                    ConfigFunctionSubprocess(
+                        getFunction=functools.partial(
+                            FunctionFSTestDevice,
+                            ep_pair_count=args.ep_pair_count,
                         ),
-                        'mount': {
-                            'uid': uid,
-                            'gid': gid,
-                        },
-                    },
+                        uid=uid,
+                        gid=gid,
+                    ),
                 ],
                 'MaxPower': 500,
                 'lang_dict': {
@@ -282,7 +276,7 @@ def main():
         signal.signal(signal.SIGCHLD, raiseKeyboardInterrupt)
         try:
             # Note: events are not serviced in this process, but in the process
-            # spawned by SubprocessFunction.
+            # spawned by ConfigFunctionSubprocess.
             print('Servicing functionfs events forever...')
             while True:
                 signal.pause()

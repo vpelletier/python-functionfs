@@ -25,7 +25,7 @@ import functools
 import pwd
 import signal
 import functionfs
-from functionfs.gadget import Gadget, SubprocessFunction
+from functionfs.gadget import Gadget, ConfigFunctionSubprocess
 
 # This is the exact HID mouse descriptor as present in the HID 1.11
 # specification, Appendix E.10
@@ -129,21 +129,15 @@ def main():
             # A single configuration
             {
                 'function_list': [
-                    { # A single function
-                        'function': SubprocessFunction(
-                            getFunction=functools.partial(
-                                Mouse,
-                                report_descriptor=REPORT_DESCRIPTOR,
-                                in_report_max_length=len(GO_RIGHT_REPORT),
-                            ),
-                            uid=uid,
-                            gid=gid,
+                    ConfigFunctionSubprocess(
+                        getFunction=functools.partial(
+                            Mouse,
+                            report_descriptor=REPORT_DESCRIPTOR,
+                            in_report_max_length=len(GO_RIGHT_REPORT),
                         ),
-                        'mount': {
-                            'uid': uid,
-                            'gid': gid,
-                        },
-                    },
+                        uid=uid,
+                        gid=gid,
+                    ),
                 ],
                 'MaxPower': 500,
                 'lang_dict': {
