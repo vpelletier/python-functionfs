@@ -22,7 +22,7 @@ import functionfs
 import functionfs.ch9
 from functionfs.gadget import (
     GadgetSubprocessManager,
-    ConfigFunctionSubprocess,
+    ConfigFunctionFFSSubprocess,
 )
 from . import common
 
@@ -221,7 +221,7 @@ def main():
     )
     args = parser.parse_args()
     def getConfigFunctionSubprocess(**kw):
-        return ConfigFunctionSubprocess(
+        return ConfigFunctionFFSSubprocess(
             getFunction=functools.partial(
                 FunctionFSTestDevice,
                 ep_pair_count=args.ep_count,
@@ -254,7 +254,7 @@ def main():
         },
     ) as gadget:
         # Note: events are not serviced in this process, but in the process
-        # spawned by ConfigFunctionSubprocess.
+        # spawned by ConfigFunctionFFSSubprocess.
         print('Servicing functionfs events forever...')
         gadget.waitForever()
 

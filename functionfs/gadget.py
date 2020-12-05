@@ -35,7 +35,8 @@ __all__ = (
     'Gadget',
     'GadgetSubprocessManager',
     'ConfigFunctionBase',
-    'ConfigFunctionSubprocess',
+    'ConfigFunctionFFS',
+    'ConfigFunctionFFSSubprocess',
 )
 
 _libc = ctypes.CDLL(
@@ -76,10 +77,6 @@ class Gadget(object):
     and __exit__ (writing to configfs, mounting and unmounting functionfs)
     require elevated privileges (CAP_SYS_ADMIN for {,un}mounting, for example)
     so this code likely needs to run as root.
-
-    You should consider using ConfigFunctionSubprocess to wrap all your
-    functions, with an uid and gid so they can drop privileges and not run as
-    root.
     """
     udb_gadget_path = '/sys/kernel/config/usb_gadget/'
     class_udc_path = '/sys/class/udc/'
@@ -219,7 +216,7 @@ class Gadget(object):
         )
         self.__name = name
         self.__real_name = None # chosen on __enter__
-        self.__mountpoint_dict = {}
+        self.__function_list = []
         self.__dir_list = []
         self.__link_list = []
         self.__udc_path = None
@@ -285,7 +282,7 @@ class Gadget(object):
                 desc_file.write(value)
         dir_list.extend(self.__writeLangDict(name, self.__lang_dict))
         self.__writeAttributeDict(name, self.__attribute_dict)
-        function_list = []
+        function_list = self.__function_list
         function_number_iterator = itertools.count()
         functions_root = os.path.join(name, 'functions')
         configs_root = os.path.join(name, 'configs')
@@ -303,30 +300,12 @@ class Gadget(object):
                 configuration_dict['attribute_dict'],
             )
             for function_index, function in configuration_dict['function_list']:
-                function_name = 'usb%i' % next(function_number_iterator)
                 function_path = os.path.join(
                     functions_root,
-                    'ffs.' + function_name,
-                )
-                function_list.append((
-                    function_name,
-                    function,
-                    b','.join(
-                        b'%s=%i' % (
-                            key.encode('ascii'),
-                            cast(function.mount_dict[key]),
-                        )
-                        for key, cast in (
-                            ('uid', int),
-                            ('gid', int),
-                            ('rmode', int),
-                            ('fmode', int),
-                            ('mode', int),
-                            ('no_disconnect', bool),
-                        )
-                        if function.mount_dict.get(key) is not None
+                    function.type_name + (
+                        '.usb%i' % next(function_number_iterator)
                     ),
-                ))
+                )
                 mkdir(function_path)
                 symlink(
                     function_path,
@@ -335,28 +314,10 @@ class Gadget(object):
                         'function.%i' % (function_index, ),
                     ),
                 )
-        mountpoint_dict = self.__mountpoint_dict
-        wait_list = []
-        for function_name, function, mount_options in function_list:
-            mountpoint = tempfile.mkdtemp(
-                prefix='ffs.' + function_name + '_',
-            )
-            b_mountpoint = mountpoint.encode('ascii')
-            dir_list.append(mountpoint)
-            mountpoint_attr_dict = mountpoint_dict[b_mountpoint] = {}
-            _mount(
-                function_name.encode('ascii'),
-                b_mountpoint,
-                b'functionfs',
-                0,
-                mount_options,
-            )
-            function.start(mountpoint=mountpoint)
-            mountpoint_attr_dict['kill'] = function.kill
-            mountpoint_attr_dict['join'] = function.join
-            wait_list.append(function.wait)
-        while wait_list:
-            wait_list.pop()()
+                function_list.append(function)
+                function.start(path=function_path)
+        for function in function_list:
+            function.wait()
         self.__udc_path = udc_path = os.path.join(name, 'UDC')
         try:
             with open(udc_path, 'w') as udc:
@@ -384,41 +345,30 @@ class Gadget(object):
         if udc_path:
             with open(udc_path, 'wb') as udc:
                 udc.write(b'')
-        mountpoint_dict = self.__mountpoint_dict
-        noop = lambda: None
-        for mountpoint, mountpoint_attr_dict in mountpoint_dict.iteritems():
+        function_list = self.__function_list
+        for function in function_list:
             try:
-                mountpoint_attr_dict.get('kill', noop)()
+                function.kill()
             except Exception: # pylint: disable=broad-except
                 print(
                     'Exception caught while killing function %r' % (
-                        mountpoint,
+                        function,
                     ),
                     file=sys.stderr,
                 )
                 traceback.print_exc()
-        for mountpoint, mountpoint_attr_dict in mountpoint_dict.iteritems():
+        while function_list:
+            function = function_list.pop()
             try:
-                mountpoint_attr_dict.get('join', noop)()
+                function.join()
             except Exception: # pylint: disable=broad-except
                 print(
                     'Exception caught while joining function %r' % (
-                        mountpoint,
+                        function,
                     ),
                     file=sys.stderr,
                 )
                 traceback.print_exc()
-            try:
-                _umount(mountpoint)
-            except OSError as exc:
-                # if target is not a mountpoint we can rmdir
-                if exc.errno != errno.EINVAL:
-                    # on other error, report
-                    print(
-                        'Failed to unmount %r: %r' % (mountpoint, exc),
-                        file=sys.stderr,
-                    )
-        mountpoint_dict.clear()
         link_list = self.__link_list
         while link_list:
             link = link_list.pop()
@@ -547,6 +497,63 @@ class ConfigFunctionBase(object):
 
     Describes the API expected by Gadget (and subclasses).
     """
+    @property
+    def type_name(self):
+        """
+        Name of this type of function, as recognised by the kernel.
+        Ex: "ffs", "acm", ...
+        """
+        raise NotImplementedError
+
+    def start(self, path):
+        """
+        Begin function initialisation: write to function's attributes in
+        configfs, open devices/endpoints, spawn processes/threads, ...
+        For best performance, this method should be kept short (even on
+        functions which do not spawn anything) so such functions can
+        initialise in parallel.
+
+        path (str)
+            Path to this function in configfs.
+        """
+        raise NotImplementedError
+
+    def wait(self):
+        """
+        Block until the function is fully initialised.
+
+        Useful mostly if "start" method spawned processes/threads which need
+        to do further initialisation on their own.
+        """
+        raise NotImplementedError
+
+    def kill(self):
+        """
+        Tell the function to start winding down.
+
+        Useful mostly if "start" method spawned processes/threads to signal
+        them to wind down.
+        For best performance, this method should be kept short (even on
+        functions which do not spawn anything) so such functions can wind down
+        in parallel.
+        """
+        raise NotImplementedError
+
+    def join(self):
+        """
+        Block until function has closed all its endpoint files.
+
+        Should undo everything "start" method did before returning.
+        """
+        raise NotImplementedError
+
+class ConfigFunctionFFS(ConfigFunctionBase): # pylint: disable=abstract-method
+    """
+    Base class for functionfs functions.
+    """
+    type_name = "ffs"
+    _mountpoint = None
+
     def __init__(
         self,
         getFunction=None,
@@ -578,7 +585,7 @@ class ConfigFunctionBase(object):
             rest of the gadget continue to work, and tells the kernel to reject
             all transfers to this function.
         """
-        super(ConfigFunctionBase, self).__init__()
+        super(ConfigFunctionFFS, self).__init__()
         self._getFunction = getFunction
         self._uid = uid
         self._gid = gid
@@ -586,18 +593,6 @@ class ConfigFunctionBase(object):
         self._fmode = fmode
         self._mode = mode
         self._no_disconnect = no_disconnect
-        self.mount_dict = {
-            key: value
-            for key, value in (
-                ('uid', uid),
-                ('gid', gid),
-                ('rmode', rmode),
-                ('fmode', fmode),
-                ('mode', mode),
-                ('no_disconnect', no_disconnect),
-            )
-            if value is not None
-        }
 
     def getFunction(self, path):
         """
@@ -608,33 +603,55 @@ class ConfigFunctionBase(object):
         If not overridden, constructor's getFunction argument is
         mandatory.
         """
-        return self._getFunction(path)
+        return self._getFunction(path=path)
 
-    def start(self, mountpoint):
+    def start(self, path):
         """
-        Begin function initialisation.
+        Mount functionfs and set _mountpoint.
         """
-        raise NotImplementedError
-
-    def wait(self):
-        """
-        Block until the function is fully initialised.
-        """
-        raise NotImplementedError
-
-    def kill(self):
-        """
-        Tell the function to start winding down.
-        """
-        raise NotImplementedError
+        function_basename = os.path.basename(path)
+        _, function_name = function_basename.split('.')
+        mountpoint = tempfile.mkdtemp(
+            prefix=function_basename + '_',
+        )
+        _mount(
+            function_name.encode('ascii'),
+            mountpoint.encode('ascii'),
+            b'functionfs',
+            0,
+            b','.join(
+                b'%s=%i' % (
+                    key.encode('ascii'),
+                    cast(value),
+                )
+                for key, cast, value in (
+                    ('uid', int, self._uid),
+                    ('gid', int, self._gid),
+                    ('rmode', int, self._rmode),
+                    ('fmode', int, self._fmode),
+                    ('mode', int, self._mode),
+                    ('no_disconnect', bool, self._no_disconnect),
+                )
+                if value is not None
+            ),
+        )
+        self._mountpoint = mountpoint
 
     def join(self):
         """
-        Block until function has closed all its endpoint files.
+        Unmount functionfs and clear _mountpoint.
         """
-        raise NotImplementedError
+        mountpoint = self._mountpoint
+        try:
+            _umount(mountpoint.encode('ascii'))
+        except OSError as exc:
+            # if target is not a mountpoint we can rmdir
+            if exc.errno != errno.EINVAL:
+                raise
+        os.rmdir(mountpoint)
+        self._mountpoint = None
 
-class ConfigFunctionSubprocess(ConfigFunctionBase):
+class ConfigFunctionFFSSubprocess(ConfigFunctionFFS):
     """
     Function is isolated in a subprocess, allowing a change of user and group.
     NOTE: changes working directory to / in the subprocess (like any
@@ -644,10 +661,10 @@ class ConfigFunctionSubprocess(ConfigFunctionBase):
     function = None
 
     def __init__(self, *args, **kw):
-        super(ConfigFunctionSubprocess, self).__init__(*args, **kw)
+        super(ConfigFunctionFFSSubprocess, self).__init__(*args, **kw)
         self.__read_pipe, self.__write_pipe = os.pipe()
 
-    def start(self, mountpoint):
+    def start(self, path):
         """
         Start the subprocess.
         In the subprocess: change user, create the function and store it as
@@ -655,6 +672,7 @@ class ConfigFunctionSubprocess(ConfigFunctionBase):
         and call self.run().
         In the parent process: return the callables expected by Gadget.
         """
+        super(ConfigFunctionFFSSubprocess, self).start(path)
         self.__pid = pid = os.fork()
         if pid == 0:
             try:
@@ -666,7 +684,9 @@ class ConfigFunctionSubprocess(ConfigFunctionBase):
                     os.setgid(self._gid)
                 if self._uid is not None:
                     os.setuid(self._uid)
-                self.function = function = self.getFunction(path=mountpoint)
+                self.function = function = self.getFunction(
+                    path=self._mountpoint,
+                )
                 with function:
                     os.write(self.__write_pipe, _READY_MARKER)
                     self.run()
@@ -709,6 +729,7 @@ class ConfigFunctionSubprocess(ConfigFunctionBase):
             # all good.
             if exc.errno != errno.ECHILD:
                 raise
+        super(ConfigFunctionFFSSubprocess, self).join()
 
     def run(self):
         """

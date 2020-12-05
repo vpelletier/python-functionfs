@@ -25,7 +25,7 @@ import sys
 import functionfs
 from functionfs.gadget import (
     GadgetSubprocessManager,
-    ConfigFunctionSubprocess,
+    ConfigFunctionFFSSubprocess,
 )
 import functionfs.ch9
 
@@ -164,7 +164,7 @@ class USBCat(functionfs.Function):
         trace('onResume')
         super(USBCat, self).onResume()
 
-class SubprocessCat(ConfigFunctionSubprocess):
+class SubprocessCat(ConfigFunctionFFSSubprocess):
     __epoll = None
 
     def __init__(self, **kw):
@@ -203,8 +203,8 @@ class SubprocessCat(ConfigFunctionSubprocess):
 
     def run(self):
         """
-        This implementation does not call ConfigFunctionSubprocess.run, as it
-        implements its own event handling loop involving function's file
+        This implementation does not call ConfigFunctionFFSSubprocess.run, as
+        it implements its own event handling loop involving function's file
         descriptors.
         """
         self.__epoll = epoll = select.epoll(3)

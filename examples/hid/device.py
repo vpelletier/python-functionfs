@@ -23,7 +23,7 @@ import errno
 import functionfs
 from functionfs.gadget import (
     GadgetSubprocessManager,
-    ConfigFunctionSubprocess,
+    ConfigFunctionFFSSubprocess,
 )
 
 # This is the exact HID mouse descriptor as present in the HID 1.11
@@ -105,7 +105,7 @@ def main():
         'mouse moving right.',
     ).parse_args()
     def getConfigFunctionSubprocess(**kw):
-        return ConfigFunctionSubprocess(
+        return ConfigFunctionFFSSubprocess(
             getFunction=Mouse,
             **kw
         )
