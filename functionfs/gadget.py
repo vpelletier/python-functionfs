@@ -543,7 +543,7 @@ class ConfigFunctionBase(object):
         """
         Block until function has closed all its endpoint files.
 
-        Should undo everything "start" method did before returning.
+        Should undo everything "start" & "wait" methods did before returning.
         """
         raise NotImplementedError
 
