@@ -190,7 +190,7 @@ class Gadget(object):
                 )
                 if message_dict.get(message_name) is not None
             }
-            for lang, message_dict in lang_dict.iteritems()
+            for lang, message_dict in dict(lang_dict).iteritems()
         }
         self.__attribute_dict = {
             name: hex(value).encode('ascii')
