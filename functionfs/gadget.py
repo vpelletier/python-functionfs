@@ -14,8 +14,9 @@
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
 """
-Interfaces with /sys/kernel/config/usb_gadget/ to setup an USB gadget capable
-of hosting functions.
+Interfaces with configfs (typically located in /sys/kernel/config/usb_gadget/
+to setup an USB gadget capable of hosting functions, and to cleanly wind it
+down on exit.
 """
 from __future__ import absolute_import, print_function
 import argparse
@@ -233,7 +234,7 @@ class Gadget(object):
         with open(self.__udc_path, 'rb') as udc:
             return bool(udc.read())
 
-    def __writeAttributeDict(self, base, attribute_dict):
+    def __writeAttributeDict(self, base, attribute_dict): # pylint: disable=no-self-use
         for attribute_name, attribute_value in attribute_dict.iteritems():
             with open(os.path.join(base, attribute_name), 'wb') as attribute_file:
                 attribute_file.write(attribute_value)
@@ -448,8 +449,8 @@ class _UsernameAction(argparse.Action):
 
 class GadgetSubprocessManager(Gadget):
     """
-    A Gadget subclass aimed at reducing boilerplate code when using
-    ConfigFunctionSubprocess.
+    A Gadget subclass aimed at reducing boilerplate code when involved
+    functions are spawned as subprocesses.
 
     Installs a SIGCHLD handler which raises KeyboardInterrupt, and make
     __exit__ suppress this exception.
@@ -493,8 +494,9 @@ class GadgetSubprocessManager(Gadget):
         args (namespace obtained from parse_args)
             To retrieve uid, gid and udc.
         config_list
-            Unlike Gadget.__init__, functions must be callables returning the
-            function instance, and not function instances directly.
+            Unlike Gadget.__init__, function_list items must be callables
+            returning the function instance, and not function instances
+            directly.
             This callable will receive uid and gid named arguments with values
             received from args.
         Everything else is passed to Gadget.__init__ .
@@ -504,7 +506,7 @@ class GadgetSubprocessManager(Gadget):
                 x(uid=args.uid, gid=args.gid)
                 for x in config['function_list']
             ]
-        super().__init__(
+        super(GadgetSubprocessManager, self).__init__(
             udc=args.udc,
             config_list=config_list,
             **kw
@@ -532,7 +534,7 @@ class GadgetSubprocessManager(Gadget):
         _ = stack_frame # Silence pylint
         raise KeyboardInterrupt
 
-    def waitForever(self):
+    def waitForever(self): # pylint: disable=no-self-use
         """
         Wait for a signal (including a child exiting).
         """
@@ -541,7 +543,9 @@ class GadgetSubprocessManager(Gadget):
 
 class ConfigFunctionBase(object):
     """
-    Base class for gadget functions.
+    Base class for config functions.
+
+    Describes the API expected by Gadget (and subclasses).
     """
     def __init__(
         self,
@@ -556,6 +560,7 @@ class ConfigFunctionBase(object):
         """
         getFunction ((path) -> functionfs.Function)
             If non-None, overrides self.getFunction.
+            Short-hand to avoid having to subclass for simple functions.
         uid (int, None)
             User id to drop privileges to.
         gid (int, None)
@@ -574,8 +579,7 @@ class ConfigFunctionBase(object):
             all transfers to this function.
         """
         super(ConfigFunctionBase, self).__init__()
-        if getFunction is not None:
-            self.getFunction = getFunction
+        self._getFunction = getFunction
         self._uid = uid
         self._gid = gid
         self._rmode = rmode
@@ -595,8 +599,7 @@ class ConfigFunctionBase(object):
             if value is not None
         }
 
-    @staticmethod
-    def getFunction(path):
+    def getFunction(self, path):
         """
         Called during start (if applicable, after forking and dropping
         privileges). Created function is available as the "function"
@@ -605,7 +608,7 @@ class ConfigFunctionBase(object):
         If not overridden, constructor's getFunction argument is
         mandatory.
         """
-        raise RuntimeError
+        return self._getFunction(path)
 
     def start(self, mountpoint):
         """
