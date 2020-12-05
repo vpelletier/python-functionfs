@@ -688,13 +688,24 @@ class ConfigFunctionSubprocess(ConfigFunctionBase):
         """
         Send the SIGINT signal to function subprocess.
         """
-        os.kill(self.__pid, signal.SIGINT)
+        try:
+            os.kill(self.__pid, signal.SIGINT)
+        except OSError as exc:
+            # If the child process is not running, then all good.
+            if exc.errno != errno.ESRCH:
+                raise
 
     def join(self):
         """
         Wait for function subprocess to exit.
         """
-        os.waitpid(self.__pid, 0)
+        try:
+            os.waitpid(self.__pid, 0)
+        except OSError as exc:
+            # If the child process does not exist (no status to reap), then
+            # all good.
+            if exc.errno != errno.ECHILD:
+                raise
 
     def run(self):
         """
