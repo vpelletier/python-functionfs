@@ -284,6 +284,7 @@ class Gadget(object):
         self.__writeAttributeDict(name, self.__attribute_dict)
         function_list = self.__function_list
         function_number_iterator = itertools.count()
+        name_set = set()
         functions_root = os.path.join(name, 'functions')
         configs_root = os.path.join(name, 'configs')
         for configuration_index, configuration_dict in self.__config_list:
@@ -300,11 +301,17 @@ class Gadget(object):
                 configuration_dict['attribute_dict'],
             )
             for function_index, function in configuration_dict['function_list']:
+                function_name = function.name
+                if function_name is None:
+                    while True:
+                        function_name = 'usb%i' % next(function_number_iterator)
+                        if function_name not in name_set:
+                            break
+                    function.name = function_name
+                name_set.add(function_name)
                 function_path = os.path.join(
                     functions_root,
-                    function.type_name + (
-                        '.usb%i' % next(function_number_iterator)
-                    ),
+                    function.type_name + '.' + function_name,
                 )
                 mkdir(function_path)
                 symlink(
@@ -497,6 +504,17 @@ class ConfigFunctionBase(object):
 
     Describes the API expected by Gadget (and subclasses).
     """
+    name = None
+
+    def __init__(self, name=None):
+        """
+        name (str)
+            Name of this specific instance of this function on this gadget.
+            If None, will be generated and set by Gadget when creating the
+            functions.
+        """
+        self.name = name
+
     @property
     def type_name(self):
         """
@@ -556,6 +574,7 @@ class ConfigFunctionFFS(ConfigFunctionBase): # pylint: disable=abstract-method
 
     def __init__(
         self,
+        name=None,
         getFunction=None,
         uid=None,
         gid=None,
@@ -585,7 +604,7 @@ class ConfigFunctionFFS(ConfigFunctionBase): # pylint: disable=abstract-method
             rest of the gadget continue to work, and tells the kernel to reject
             all transfers to this function.
         """
-        super(ConfigFunctionFFS, self).__init__()
+        super(ConfigFunctionFFS, self).__init__(name=name)
         self._getFunction = getFunction
         self._uid = uid
         self._gid = gid
