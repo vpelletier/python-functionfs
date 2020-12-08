@@ -472,9 +472,14 @@ class GadgetSubprocessManager(Gadget):
     def __enter__(self):
         super(GadgetSubprocessManager, self).__enter__()
         signal.signal(signal.SIGCHLD, self.__raiseKeyboardInterrupt)
+        # We are on the same terminal as subprocesses, so we will be getting
+        # SIGINT at the same time as them. But we need to wait for them to
+        # cleanup and then we will be notified by SIGCHLD.
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
         return self
 
     def __exit__(self, exc_type, exc_value, tb):
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
         signal.signal(signal.SIGCHLD, signal.SIG_DFL)
         result = super(
             GadgetSubprocessManager,
