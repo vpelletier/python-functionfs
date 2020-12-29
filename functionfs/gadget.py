@@ -404,6 +404,14 @@ class _UsernameAction(argparse.Action):
         namespace.uid = passwd.pw_uid
         namespace.gid = passwd.pw_gid
 
+def _raiseKeyboardInterrupt(signal_number, stack_frame):
+    """
+    Make gadget exit if function subprocess exits.
+    """
+    _ = signal_number # Silence pylint
+    _ = stack_frame # Silence pylint
+    raise KeyboardInterrupt
+
 class GadgetSubprocessManager(Gadget):
     """
     A Gadget subclass aimed at reducing boilerplate code when involved
@@ -471,7 +479,7 @@ class GadgetSubprocessManager(Gadget):
 
     def __enter__(self):
         super(GadgetSubprocessManager, self).__enter__()
-        signal.signal(signal.SIGCHLD, self.__raiseKeyboardInterrupt)
+        signal.signal(signal.SIGCHLD, _raiseKeyboardInterrupt)
         # We are on the same terminal as subprocesses, so we will be getting
         # SIGINT at the same time as them. But we need to wait for them to
         # cleanup and then we will be notified by SIGCHLD.
@@ -486,15 +494,6 @@ class GadgetSubprocessManager(Gadget):
             self,
         ).__exit__(exc_type, exc_value, tb)
         return result or isinstance(exc_value, KeyboardInterrupt)
-
-    @staticmethod
-    def __raiseKeyboardInterrupt(signal_number, stack_frame):
-        """
-        Make gadget exit if function subprocess exits.
-        """
-        _ = signal_number # Silence pylint
-        _ = stack_frame # Silence pylint
-        raise KeyboardInterrupt
 
     def waitForever(self): # pylint: disable=no-self-use
         """
@@ -696,6 +695,7 @@ class ConfigFunctionFFSSubprocess(ConfigFunctionFFS):
         and call self.run().
         In the parent process: return the callables expected by Gadget.
         """
+        signal.signal(signal.SIGTERM, _raiseKeyboardInterrupt)
         super(ConfigFunctionFFSSubprocess, self).start(path)
         self.__pid = pid = os.fork()
         if pid == 0:
