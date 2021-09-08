@@ -146,7 +146,15 @@ class Gadget(object):
             fit in 7 bytes.
         """
         if udc is None:
-            udc, = os.listdir(self.class_udc_path)
+            udc_list = os.listdir(self.class_udc_path)
+            try:
+                udc, = udc_list
+            except ValueError:
+                raise ValueError(
+                    'More than one UDC available'
+                    if udc_list else
+                    'No UDC available'
+                )
             udc = os.path.basename(udc)
         elif not os.path.exists(os.path.join(self.class_udc_path, udc)):
             raise ValueError('No such UDC')
@@ -267,15 +275,23 @@ class Gadget(object):
             os.mkdir(path)
             dir_list.append(path)
         name = self.__name
-        if name is None:
-            name = tempfile.mkdtemp(
-                prefix='g_',
-                dir=self.udb_gadget_path,
-            )
-            dir_list.append(name)
-        else:
-            name = os.path.join(self.udb_gadget_path, name)
-            mkdir(name)
+        try:
+            if name is None:
+                name = tempfile.mkdtemp(
+                    prefix='g_',
+                    dir=self.udb_gadget_path,
+                )
+                dir_list.append(name)
+            else:
+                name = os.path.join(self.udb_gadget_path, name)
+                mkdir(name)
+        except OSError as exc:
+            if exc.errno == errno.ENOENT:
+                exc.strerror = (
+                    self.udb_gadget_path +
+                    ' does not exist, is libcomposite module loaded ?'
+                )
+            raise
         self.__real_name = name
         for key, value in self.__os_desc:
             with open(os.path.join(name, key), 'wb') as desc_file:
@@ -313,7 +329,15 @@ class Gadget(object):
                     functions_root,
                     function.type_name + '.' + function_name,
                 )
-                mkdir(function_path)
+                try:
+                    mkdir(function_path)
+                except OSError as exc:
+                    if exc.errno == errno.ENOENT:
+                        exc.strerror = (
+                            'Cannot create function of type %r, is its module '
+                            'available ?' % (function.type_name, )
+                        )
+                    raise
                 symlink(
                     function_path,
                     os.path.join(
