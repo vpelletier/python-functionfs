@@ -353,7 +353,7 @@ class Gadget(object):
         try:
             with open(udc_path, 'w') as udc:
                 udc.write(self.__udc)
-        except OSError as exc:
+        except (IOError, OSError) as exc:
             if exc.errno == 524: # ENOTSUPP, which is not ENOTSUP
                 exc.strerror = 'UDC cannot allocate this many endpoints'
             raise
