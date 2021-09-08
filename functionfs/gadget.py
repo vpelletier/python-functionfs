@@ -338,6 +338,8 @@ class Gadget(object):
                             'available ?' % (function.type_name, )
                         )
                     raise
+                function_list.append(function)
+                function.start(path=function_path)
                 symlink(
                     function_path,
                     os.path.join(
@@ -345,8 +347,6 @@ class Gadget(object):
                         'function.%i' % (function_index, ),
                     ),
                 )
-                function_list.append(function)
-                function.start(path=function_path)
         for function in function_list:
             function.wait()
         self.__udc_path = udc_path = os.path.join(name, 'UDC')
