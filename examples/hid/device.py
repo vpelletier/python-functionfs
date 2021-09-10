@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # This file is part of python-functionfs
-# Copyright (C) 2018-2020  Vincent Pelletier <plr.vincent@gmail.com>
+# Copyright (C) 2018-2021  Vincent Pelletier <plr.vincent@gmail.com>
 #
 # python-functionfs is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
