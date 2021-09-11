@@ -593,6 +593,48 @@ class ConfigFunctionBase(object):
         """
         raise NotImplementedError
 
+class ConfigFunctionKernel(ConfigFunctionBase):
+    """
+    Base class for config functions which are implemented in the kernel.
+    """
+    def __init__(self, config_dict=(), name=None):
+        """
+        config_dict (dict)
+            key (str): path, relative to the function, of the option to set.
+            value (str): value of the option
+        """
+        self.__config_dict = dict(config_dict)
+        super(ConfigFunctionKernel, self).__init__(name=name)
+
+    def start(self, path):
+        """
+        Apply the content of config_dict.
+        """
+        for option_path, option_value in self.__config_dict.iteritems():
+            option_abspath = os.path.normpath(os.path.join(path, option_path))
+            if os.path.commonprefix((path, option_abspath)) != path:
+                raise ValuError('Invalid option path: %r' % (option_path, ))
+            with open(option_abspath, 'w') as option_file:
+                option_file.write(option_value)
+
+    def wait(self):
+        """
+        No-op.
+        """
+        return
+
+    def kill(self):
+        """
+        No-op.
+        """
+        return
+
+    def join(self):
+        """
+        No-op.
+        """
+        return
+
 class ConfigFunctionFFS(ConfigFunctionBase): # pylint: disable=abstract-method
     """
     Base class for functionfs functions.
