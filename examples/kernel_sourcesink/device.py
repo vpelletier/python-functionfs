@@ -23,6 +23,9 @@ from functionfs.gadget import (
     ConfigFunctionKernel,
 )
 
+class LoopbackFunction(ConfigFunctionKernel):
+    type_name = 'Loopback'
+
 class SourceSinkFunction(ConfigFunctionKernel):
     type_name = 'SourceSink'
 
@@ -50,27 +53,46 @@ def main():
     for sourcesink in args.sourcesink:
         key, value = sourcesink.split('=', 1)
         sourcesink_dict[os.path.normpath(key)] = value
+    # As an exercise, stick as close as possible to the gadget setup in
+    # https://wiki.tizen.org/USB/Linux_USB_Layers/Configfs_Composite_Gadget/Usage_eq._to_g_zero.ko
     with Gadget(
         udc=args.udc,
+        name='g1',
         config_list=[
             {
                 'function_list': [
-                    SourceSinkFunction(config_dict=sourcesink_dict),
+                    LoopbackFunction(
+                        name='0',
+                    ),
                 ],
-                'MaxPower': 500,
+                'MaxPower': 120,
                 'lang_dict': {
                     0x409: {
-                        'configuration': 'SourceSink demo function',
+                        'configuration': 'Conf 1',
                     },
                 },
-            }
+            },
+            {
+                'function_list': [
+                    SourceSinkFunction(
+                        name='0',
+                        config_dict=sourcesink_dict,
+                    ),
+                ],
+                'lang_dict': {
+                    0x409: {
+                        'configuration': 'Conf 2',
+                    },
+                },
+            },
         ],
-        idVendor=0x1d6b, # Linux Foundation
-        idProduct=0x0104, # Multifunction Composite Gadget
+        idVendor=0x2d01,
+        idProduct=0x04e8,
         lang_dict={
             0x409: {
-                'product': 'SourceSink demo',
-                'manufacturer': 'python-functionfs',
+                'product': 'Test gadget',
+                'manufacturer': 'my-manufacturer',
+                'serialnumber': 'my-serial-num',
             },
         },
     ) as gadget:
