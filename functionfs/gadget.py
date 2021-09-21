@@ -146,7 +146,10 @@ class Gadget:
             fit in 7 bytes.
         """
         if udc is None:
-            udc_list = os.listdir(self.class_udc_path)
+            try:
+                udc_list = os.listdir(self.class_udc_path)
+            except FileNotFoundError:
+                udc_list = ()
             try:
                 udc, = udc_list
             except ValueError:
