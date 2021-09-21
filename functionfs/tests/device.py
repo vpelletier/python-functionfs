@@ -33,13 +33,13 @@ class EPThread(threading.Thread):
     daemon = True
 
     def __init__(self, ep_file, method, **kw):
-        super(EPThread, self).__init__(**kw)
+        super().__init__(**kw)
         self.__method = method
         self.ep_file = ep_file
         self.echo_buf = bytearray(512)
         self.__run_lock = run_lock = threading.Lock()
         run_lock.acquire()
-        super(EPThread, self).start()
+        super().start()
 
     def start(self):
         ep_num = self.ep_file.getDescriptor().bEndpointAddress
@@ -117,7 +117,7 @@ class FunctionFSTestDevice(functionfs.Function):
                     bInterval=0,
                 )
             )
-        super(FunctionFSTestDevice, self).__init__(
+        super().__init__(
             path,
             fs_list=fs_list,
             hs_list=hs_list,
@@ -132,7 +132,7 @@ class FunctionFSTestDevice(functionfs.Function):
         self.__echo_payload = 'NOT SET'
 
     def __enter__(self):
-        result = super(FunctionFSTestDevice, self).__enter__()
+        result = super().__enter__()
         assert len(self._ep_list) == self.__ep_count + 1
         thread_list = self.__thread_list = []
         for ep_file in self._ep_list[1:]:
@@ -204,7 +204,7 @@ class FunctionFSTestDevice(functionfs.Function):
                 print('functionfs: onSetup: halt')
                 self.ep0.halt(request_type)
         else:
-            super(FunctionFSTestDevice, self).onSetup(
+            super().onSetup(
                 request_type, request, value, index, length,
             )
 

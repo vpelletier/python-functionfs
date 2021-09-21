@@ -14,7 +14,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
-from __future__ import print_function
+
 from collections import deque
 import errno
 import fcntl
@@ -37,7 +37,7 @@ trace = functools.partial(print, file=sys.stderr)
 class EndpointOUTFile(functionfs.EndpointOUTFile):
     def __init__(self, writer, *args, **kw):
         self.__writer = writer
-        super(EndpointOUTFile, self).__init__(*args, **kw)
+        super().__init__(*args, **kw)
 
     def onComplete(self, data, status):
         if data is None:
@@ -51,7 +51,7 @@ class EndpointINFile(functionfs.EndpointINFile):
         self.__onCanSend = onCanSend
         self.__onCannotSend = onCannotSend
         self.__stranded_buffer_list_queue = deque()
-        super(EndpointINFile, self).__init__(*args, **kw)
+        super().__init__(*args, **kw)
 
     def onComplete(self, buffer_list, user_data, status):
         if status < 0:
@@ -97,14 +97,14 @@ class USBCat(functionfs.Function):
                 },
             ],
         )
-        super(USBCat, self).__init__(
+        super().__init__(
             path,
             fs_list=fs_list,
             hs_list=hs_list,
             ss_list=ss_list,
             lang_dict={
                 0x0409: [
-                    u"USBCat",
+                    "USBCat",
                 ],
             },
         )
@@ -127,48 +127,48 @@ class USBCat(functionfs.Function):
         )
 
     def __enter__(self):
-        result = super(USBCat, self).__enter__()
+        result = super().__enter__()
         self.in_ep = self.getEndpoint(1)
         return result
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.__onCannotSend()
-        super(USBCat, self).__exit__(exc_type, exc_value, traceback)
+        super().__exit__(exc_type, exc_value, traceback)
 
     def onBind(self):
         trace('onBind')
-        super(USBCat, self).onBind()
+        super().onBind()
 
     def onUnbind(self):
         trace('onUnbind')
         self.in_ep.forgetStranded()
         self.__onCannotSend()
-        super(USBCat, self).onUnbind()
+        super().onUnbind()
 
     def onEnable(self):
         trace('onEnable')
-        super(USBCat, self).onEnable()
+        super().onEnable()
         self.__onCanSend()
 
     def onDisable(self):
         trace('onDisable')
         self.in_ep.forgetStranded()
         self.__onCannotSend()
-        super(USBCat, self).onDisable()
+        super().onDisable()
 
     def onSuspend(self):
         trace('onSuspend')
-        super(USBCat, self).onSuspend()
+        super().onSuspend()
 
     def onResume(self):
         trace('onResume')
-        super(USBCat, self).onResume()
+        super().onResume()
 
 class SubprocessCat(ConfigFunctionFFSSubprocess):
     __epoll = None
 
     def __init__(self, **kw):
-        super(SubprocessCat, self).__init__(**kw)
+        super().__init__(**kw)
         self.__out_encoding = getattr(sys.stdout, 'encoding', None)
 
     def getFunction(self, path):
@@ -197,7 +197,7 @@ class SubprocessCat(ConfigFunctionFFSSubprocess):
                 raise
 
     def start(self, *args, **kw):
-        super(SubprocessCat, self).start(*args, **kw)
+        super().start(*args, **kw)
         # Let the subprocess get all the input.
         sys.stdin.close()
 

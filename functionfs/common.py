@@ -16,7 +16,7 @@
 import ctypes
 import sys
 
-class Enum(object):
+class Enum:
     def __init__(self, member_dict, scope_dict=None):
         if scope_dict is None:
             # Affect caller's locals, not this module's.

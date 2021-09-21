@@ -18,7 +18,7 @@ Interfaces with configfs (typically located in /sys/kernel/config/usb_gadget/
 to setup an USB gadget capable of hosting functions, and to cleanly wind it
 down on exit.
 """
-from __future__ import absolute_import, print_function
+
 import argparse
 import ctypes
 import ctypes.util
@@ -67,7 +67,7 @@ _umount.errcheck = _checkCCall
 
 _READY_MARKER = b'ready'
 
-class Gadget(object):
+class Gadget:
     """
     Declare a gadget, with the strings, configurations, and functions it
     is composed of. Start these functions, and once all are ready, attach
@@ -154,7 +154,7 @@ class Gadget(object):
                     'More than one UDC available'
                     if udc_list else
                     'No UDC available'
-                )
+                ) from None
             udc = os.path.basename(udc)
         elif not os.path.exists(os.path.join(self.class_udc_path, udc)):
             raise ValueError('No such UDC')
@@ -181,7 +181,7 @@ class Gadget(object):
                             )
                             if message_dict.get(message_name) is not None
                         }
-                        for lang, message_dict in config_dict.get('lang_dict', {}).iteritems()
+                        for lang, message_dict in config_dict.get('lang_dict', {}).items()
                     },
                 }
                 for config_dict in config_list
@@ -198,7 +198,7 @@ class Gadget(object):
                 )
                 if message_dict.get(message_name) is not None
             }
-            for lang, message_dict in dict(lang_dict).iteritems()
+            for lang, message_dict in dict(lang_dict).items()
         }
         self.__attribute_dict = {
             name: hex(value).encode('ascii')
@@ -210,7 +210,7 @@ class Gadget(object):
                 'bDeviceProtocol': bDeviceProtocol,
                 'bDeviceClass': bDeviceClass,
                 'bDeviceSubclass': bDeviceSubclass,
-            }.iteritems()
+            }.items()
             if value is not None
         }
         self.__os_desc = (
@@ -240,13 +240,13 @@ class Gadget(object):
             return bool(udc.read())
 
     def __writeAttributeDict(self, base, attribute_dict): # pylint: disable=no-self-use
-        for attribute_name, attribute_value in attribute_dict.iteritems():
+        for attribute_name, attribute_value in attribute_dict.items():
             with open(os.path.join(base, attribute_name), 'wb') as attribute_file:
                 attribute_file.write(attribute_value)
 
     def __writeLangDict(self, base, lang_dict):
         result = []
-        for lang, message_dict in lang_dict.iteritems():
+        for lang, message_dict in lang_dict.items():
             lang_path = os.path.join(base, 'strings', lang)
             result.append(lang_path)
             os.mkdir(lang_path)
@@ -495,14 +495,14 @@ class GadgetSubprocessManager(Gadget):
                 x(uid=args.uid, gid=args.gid)
                 for x in config['function_list']
             ]
-        super(GadgetSubprocessManager, self).__init__(
+        super().__init__(
             udc=args.udc,
             config_list=config_list,
             **kw
         )
 
     def __enter__(self):
-        super(GadgetSubprocessManager, self).__enter__()
+        super().__enter__()
         signal.signal(signal.SIGCHLD, _raiseKeyboardInterrupt)
         # We are on the same terminal as subprocesses, so we will be getting
         # SIGINT at the same time as them. But we need to wait for them to
@@ -513,10 +513,7 @@ class GadgetSubprocessManager(Gadget):
     def __exit__(self, exc_type, exc_value, tb):
         signal.signal(signal.SIGINT, signal.SIG_DFL)
         signal.signal(signal.SIGCHLD, signal.SIG_DFL)
-        result = super(
-            GadgetSubprocessManager,
-            self,
-        ).__exit__(exc_type, exc_value, tb)
+        result = super().__exit__(exc_type, exc_value, tb)
         return result or isinstance(exc_value, KeyboardInterrupt)
 
     def waitForever(self): # pylint: disable=no-self-use
@@ -526,7 +523,7 @@ class GadgetSubprocessManager(Gadget):
         while True:
             signal.pause()
 
-class ConfigFunctionBase(object):
+class ConfigFunctionBase:
     """
     Base class for config functions.
 
@@ -604,13 +601,13 @@ class ConfigFunctionKernel(ConfigFunctionBase):
             value (str): value of the option
         """
         self.__config_dict = dict(config_dict)
-        super(ConfigFunctionKernel, self).__init__(name=name)
+        super().__init__(name=name)
 
     def start(self, path):
         """
         Apply the content of config_dict.
         """
-        for option_path, option_value in self.__config_dict.iteritems():
+        for option_path, option_value in self.__config_dict.items():
             option_abspath = os.path.normpath(os.path.join(path, option_path))
             if os.path.commonprefix((path, option_abspath)) != path:
                 raise ValueError('Invalid option path: %r' % (option_path, ))
@@ -674,7 +671,7 @@ class ConfigFunctionFFS(ConfigFunctionBase): # pylint: disable=abstract-method
             rest of the gadget continue to work, and tells the kernel to reject
             all transfers to this function.
         """
-        super(ConfigFunctionFFS, self).__init__(name=name)
+        super().__init__(name=name)
         self._getFunction = getFunction
         self._uid = uid
         self._gid = gid
@@ -750,7 +747,7 @@ class ConfigFunctionFFSSubprocess(ConfigFunctionFFS):
     function = None
 
     def __init__(self, *args, **kw):
-        super(ConfigFunctionFFSSubprocess, self).__init__(*args, **kw)
+        super().__init__(*args, **kw)
         self.__read_pipe, self.__write_pipe = os.pipe()
 
     def start(self, path):
@@ -762,7 +759,7 @@ class ConfigFunctionFFSSubprocess(ConfigFunctionFFS):
         In the parent process: return the callables expected by Gadget.
         """
         signal.signal(signal.SIGTERM, _raiseKeyboardInterrupt)
-        super(ConfigFunctionFFSSubprocess, self).start(path)
+        super().start(path)
         self.__pid = pid = os.fork()
         if pid == 0:
             try:
@@ -819,7 +816,7 @@ class ConfigFunctionFFSSubprocess(ConfigFunctionFFS):
             # all good.
             if exc.errno != errno.ECHILD:
                 raise
-        super(ConfigFunctionFFSSubprocess, self).join()
+        super().join()
 
     def run(self):
         """

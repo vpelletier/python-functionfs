@@ -142,7 +142,7 @@ class ConfigFunctionCDCNCM(ConfigFunctionKernel):
             config_dict['qmult'] = '%i' % qmult
         if ifname is not None:
             config_dict['ifname'] = ifname
-        super(ConfigFunctionCDCNCM, self).__init__(
+        super().__init__(
             config_dict=config_dict,
             name=name,
         )

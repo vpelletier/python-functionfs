@@ -18,7 +18,7 @@
 """
 Illustration of how to use functionfs to define an HID USB device.
 """
-from __future__ import print_function
+
 import errno
 import functionfs
 from functionfs.gadget import (
@@ -63,7 +63,7 @@ class Mouse(functionfs.HIDFunction):
     A simple mouse device.
     """
     def __init__(self, **kw):
-        super(Mouse, self).__init__(
+        super().__init__(
             report_descriptor=REPORT_DESCRIPTOR,
             in_report_max_length=len(GO_RIGHT_REPORT),
             **kw
@@ -76,7 +76,7 @@ class Mouse(functionfs.HIDFunction):
         """
         if is_in:
             return HIDINEndpoint
-        return super(Mouse, self).getEndpointClass(is_in, descriptor)
+        return super().getEndpointClass(is_in, descriptor)
 
     def getHIDReport(self, value, index, length):
         """
@@ -91,7 +91,7 @@ class Mouse(functionfs.HIDFunction):
         sending reports.
         """
         print('onEnable called')
-        super(Mouse, self).onEnable()
+        super().onEnable()
         self.getEndpoint(1).submit(
             (GO_RIGHT_REPORT, ),
         )

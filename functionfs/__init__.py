@@ -112,31 +112,6 @@ __all__ = (
     'getUSBHIDDescriptorClass',
 )
 
-try:
-    memoryview(mmap.mmap(-1, 1))
-except TypeError:
-    # python2
-    # Workaround pesky memoryview limitations on 2.7:
-    # memoryview(mmap) raises on python 2.7:
-    #   TypeError: cannot make memory view because object
-    #   does not have the buffer interface
-    # Still, for some reason, ctype's from_buffer works
-    # (yay !). So go mmap -> ctypes array here, so enpoint
-    # file's _onComplete can directly take a memoryview of
-    # it, to avoid copying the whole received buffer.
-    # And keep a strong reference to mmap object.
-    def _mmap2memoryviewFriendly(value, mmap_list):
-        mmap_list.append(value)
-        return (
-            ctypes.c_char * len(value)
-        ).from_buffer(value)
-else:
-    # python3
-    # Python 3 does not like memoryviews over ctype objects,
-    # but is fine over direct mmap.
-    def _mmap2memoryviewFriendly(value, mmap_list):
-        return value
-
 _MAX_PACKET_SIZE_DICT = {
     ch9.USB_ENDPOINT_XFER_ISOC: (
         1023,   # 0..1023
@@ -333,7 +308,7 @@ def getOSDesc(interface, ext_list):
     try:
         ext_type, = {type(x) for x in ext_list}
     except ValueError:
-        raise TypeError('Extensions of a single type are required.')
+        raise TypeError('Extensions of a single type are required.') from None
     if issubclass(ext_type, OSExtCompatDesc):
         wIndex = 4
         kw = {
@@ -592,7 +567,7 @@ class EndpointFileBase(io.FileIO):
     File object representing a endpoint. Abstract.
     """
     def __init__(self, path):
-        super(EndpointFileBase, self).__init__(path, 'r+')
+        super().__init__(path, 'r+')
 
     def _ioctl(self, func, *args, **kw):
         result = fcntl.ioctl(self, func, *args, **kw)
@@ -710,7 +685,7 @@ class EndpointINFile(EndpointFile):
         eventfd (EventFD)
             eventfd to set on all AIOBlocks created for this endpoint.
         """
-        super(EndpointINFile, self).__init__(path)
+        super().__init__(path)
         self._submit = submit
         self._eventfd = eventfd
 
@@ -733,7 +708,7 @@ class EndpointINFile(EndpointFile):
         return False
 
     def _halt(self):
-        super(EndpointINFile, self).read(0)
+        super().read(0)
 
     def submit(self, buffer_list, user_data=None):
         """
@@ -864,7 +839,7 @@ class EndpointOUTFile(EndpointFile):
             Blocks which belong to this endpoint. Modified to bind them to
             this file object (target_file and onCompletion).
         """
-        super(EndpointOUTFile, self).__init__(path)
+        super().__init__(path)
         self._submit = submit
         for aio_block in aio_block_list:
             aio_block.target_file = self
@@ -886,7 +861,7 @@ class EndpointOUTFile(EndpointFile):
         return False
 
     def _halt(self):
-        super(EndpointOUTFile, self).write(b'')
+        super().write(b'')
 
     def _onComplete(self, aio_block, res, res2):
         # res2 is ignored as it just repeats res.
@@ -920,9 +895,8 @@ class EndpointOUTFile(EndpointFile):
 
         May be overridden in subclass.
         """
-        pass
 
-class Function(object):
+class Function:
     """
     Pythonic class for interfacing with FunctionFS.
 
@@ -1006,7 +980,6 @@ class Function(object):
         self._function_strings = getStrings(lang_dict)
         self._out_aio_block_list = out_aio_block_list = []
         self._out_aio_block_dict = out_aio_block_dict = {}
-        self._mmap_list = mmap_list = []
         self._ep_descriptor_list = ep_descriptor_list = []
         for descriptor in ss_list or hs_list or fs_list:
             if descriptor.bDescriptorType == ch9.USB_DT_ENDPOINT:
@@ -1020,7 +993,7 @@ class Function(object):
                 ep_address_dict[descriptor.bEndpointAddress] = index
                 if not is_in:
                     out_aio_block_dict[index] = ep_aio_block_list = []
-                    for _ in xrange(out_aio_blocks_per_endpoint):
+                    for _ in range(out_aio_blocks_per_endpoint):
                         # Using mmap to get a page-aligned buffer. f_fs strongly
                         # recommends aligning IN buffers to wMaxPacketSize
                         # addresses, as this may be required by some UDCs.
@@ -1028,13 +1001,10 @@ class Function(object):
                         out_block = libaio.AIOBlock(
                             mode=libaio.AIOBLOCK_MODE_READ,
                             buffer_list=(
-                                _mmap2memoryviewFriendly(
-                                    value=mmap.mmap(
-                                        -1, # Anonymous map
-                                        out_aio_blocks_max_packet_count *
-                                        descriptor.wMaxPacketSize,
-                                    ),
-                                    mmap_list=mmap_list,
+                                mmap.mmap(
+                                    -1, # Anonymous map
+                                    out_aio_blocks_max_packet_count *
+                                    descriptor.wMaxPacketSize,
                                 ),
                             ),
                             offset=0,
@@ -1225,7 +1195,7 @@ class Function(object):
             count, remainder = divmod(length, self._ep0_event_size)
             assert remainder == 0, (length, self._ep0_event_size)
             event_list = self._ep0_event_array_type.from_buffer(buf)
-            for index in xrange(count):
+            for index in range(count):
                 event = event_list[index]
                 event_type = event.type
                 if event_type == SETUP:
@@ -1264,7 +1234,6 @@ class Function(object):
 
         May be overridden in subclass.
         """
-        pass
 
     def onUnbind(self):
         """
@@ -1272,7 +1241,6 @@ class Function(object):
 
         May be overridden in subclass.
         """
-        pass
 
     def onEnable(self):
         """
@@ -1294,7 +1262,6 @@ class Function(object):
 
         May be overridden in subclass.
         """
-        pass
 
     def disableRemoteWakeup(self):
         """
@@ -1406,7 +1373,6 @@ class Function(object):
 
         May be overridden in subclass.
         """
-        pass
 
     def onResume(self):
         """
@@ -1414,7 +1380,6 @@ class Function(object):
 
         May be overridden in subclass.
         """
-        pass
 
 class HIDFunction(Function):
     """
@@ -1516,7 +1481,7 @@ class HIDFunction(Function):
             16: 4096000
         """
         descriptor_count = 1 + sum(
-            (len(x) for x in descriptor_dict.itervalues()),
+            (len(x) for x in descriptor_dict.values()),
         )
         def buildDescriptor(max_packet, interval):
             if (
@@ -1528,7 +1493,7 @@ class HIDFunction(Function):
             tail[0].bDescriptorType = hid.HID_DT_REPORT
             tail[0].wDescriptorLength = len(report_descriptor)
             index = 1
-            for descriptor_type, descriptor_list in descriptor_dict.iteritems():
+            for descriptor_type, descriptor_list in descriptor_dict.items():
                 for descriptor in descriptor_list:
                     tail[index].bDescriptorType = descriptor_type
                     tail[index].wDescriptorLength = len(descriptor)
@@ -1572,7 +1537,7 @@ class HIDFunction(Function):
                     ),
                 )
             return result
-        super(HIDFunction, self).__init__(
+        super().__init__(
             path,
             fs_list=fs_list or buildDescriptor(
                 _MAX_PACKET_SIZE_DICT[ch9.USB_ENDPOINT_XFER_INT][0],
@@ -1591,7 +1556,7 @@ class HIDFunction(Function):
         self.hid_descritptor_dict = hid_descritptor_dict = {
             hid.HID_DT_REPORT: [report_descriptor],
         }
-        for descriptor_type, descriptor_list in descriptor_dict.iteritems():
+        for descriptor_type, descriptor_list in descriptor_dict.items():
             hid_descritptor_dict.setdefault(
                 descriptor_type,
                 [],
@@ -1635,7 +1600,7 @@ class HIDFunction(Function):
                     getattr(self, method_id)(value, index, length)
                     return
         # Handle basic standard requests, or halt.
-        super(HIDFunction, self).onSetup(
+        super().onSetup(
             request_type,
             request,
             value,

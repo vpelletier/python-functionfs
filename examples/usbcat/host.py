@@ -14,7 +14,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
-from __future__ import print_function
+
 import fcntl
 import os
 import select
@@ -41,7 +41,7 @@ def main():
                     handle.getStringDescriptor(
                         interface_setting.getDescriptor(),
                         0x0409,
-                    ) == u'USBCat'
+                    ) == 'USBCat'
                 ):
                     interface_number = interface_setting.getNumber()
                     print('Device found at %03i:%03i interface %i' % (
@@ -86,7 +86,7 @@ def main():
         transfer_helper = usb1.USBTransferHelper()
         transfer_helper.setEventCallback(usb1.TRANSFER_COMPLETED, onReceive)
         transfer_list = []
-        for _ in xrange(PENDING_READ_COUNT):
+        for _ in range(PENDING_READ_COUNT):
             transfer = handle.getTransfer()
             transfer.setBulk(from_device, BUF_SIZE, transfer_helper)
             transfer.submit()

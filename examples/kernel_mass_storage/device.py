@@ -29,7 +29,7 @@ class MassStorageFunction(ConfigFunctionKernel):
     def __init__(self, lun_list, name=None):
         self._lun_list = lun_list
         self._lun_dir_list = []
-        super(MassStorageFunction, self).__init__(
+        super().__init__(
             config_dict={'stall': '1'},
             name=name,
         )
@@ -43,13 +43,13 @@ class MassStorageFunction(ConfigFunctionKernel):
                 lun_dir_list.append(lun_dir)
             with open(os.path.join(lun_dir, 'file'), 'w') as lun_file:
                 lun_file.write(lun)
-        super(MassStorageFunction, self).start(path)
+        super().start(path)
 
     def kill(self):
         for lun_path in self._lun_dir_list:
             os.rmdir(lun_path)
         # In the off-chance that it does something someday.
-        super(MassStorageFunction, self).kill()
+        super().kill()
 
 def main():
     parser = argparse.ArgumentParser(
