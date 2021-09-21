@@ -129,7 +129,7 @@ class FunctionFSTestDevice(functionfs.Function):
             },
         )
         self.__ep_count = len(ep_list)
-        self.__echo_payload = 'NOT SET'
+        self.__echo_payload = b'NOT SET'
         self.__thread_list = []
 
     def __enter__(self):
