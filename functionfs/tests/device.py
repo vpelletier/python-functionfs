@@ -130,11 +130,12 @@ class FunctionFSTestDevice(functionfs.Function):
         )
         self.__ep_count = len(ep_list)
         self.__echo_payload = 'NOT SET'
+        self.__thread_list = []
 
     def __enter__(self):
         result = super().__enter__()
         assert len(self._ep_list) == self.__ep_count + 1
-        thread_list = self.__thread_list = []
+        thread_list = self.__thread_list
         for ep_file in self._ep_list[1:]:
             thread_list.append(
                 EPThread(

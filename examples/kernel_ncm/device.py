@@ -16,7 +16,6 @@
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
 import argparse
 import os.path
-import json
 import random
 import signal
 import struct
@@ -118,7 +117,7 @@ class ConfigFunctionCDCNCM(ConfigFunctionKernel):
                 """
                 for _ in range(10):
                     mac = oui + struct.pack(
-                        'BBB', 
+                        'BBB',
                         random.getrandbits(8),
                         random.getrandbits(8),
                         random.getrandbits(8),
@@ -172,7 +171,7 @@ def main():
         ],
         idVendor=0x1d6b, # Linux Foundation
         idProduct=0x0104, # Multifunction Composite Gadget
-    ) as gadget:
+    ):
         try:
             while True:
                 signal.pause()

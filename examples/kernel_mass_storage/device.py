@@ -15,7 +15,6 @@
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
 import argparse
-from collections import OrderedDict
 import os.path
 import signal
 from functionfs.gadget import (
@@ -94,7 +93,7 @@ def main():
                 'manufacturer': 'python-functionfs',
             },
         },
-    ) as gadget:
+    ):
         try:
             signal.pause()
         except KeyboardInterrupt:

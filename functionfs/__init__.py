@@ -758,6 +758,7 @@ class EndpointINFile(EndpointFile):
         aio_block, res, res2, # from libaio
     ):
         # res2 is ignored as it just repeats res.
+        _ = res2 # silence pylint
         callback_result = self.onComplete(
             buffer_list,
             user_data,
@@ -783,6 +784,7 @@ class EndpointINFile(EndpointFile):
                     raise
                 self.onSubmitEAGAIN(aio_block.buffer_list, user_data)
 
+    # pylint: disable=unused-argument,no-self-use
     def onComplete(self, buffer_list, user_data, status):
         """
         Called when a transfer, queued using submit, completed.
@@ -824,6 +826,7 @@ class EndpointINFile(EndpointFile):
         May be overridden in subclass.
         """
         raise # pylint: disable=misplaced-bare-raise
+    # pylint: enable=unused-argument,no-self-use
 
 class EndpointOUTFile(EndpointFile):
     """
@@ -865,6 +868,7 @@ class EndpointOUTFile(EndpointFile):
 
     def _onComplete(self, aio_block, res, res2):
         # res2 is ignored as it just repeats res.
+        _ = res2
         if res < 0:
             data = None
             status = res
@@ -920,7 +924,7 @@ class Function:
         path,
         fs_list=(), hs_list=(), ss_list=(),
         os_list=(),
-        lang_dict={},
+        lang_dict=(),
         all_ctrl_recip=False, config0_setup=False,
         in_aio_blocks_max=32,
         out_aio_blocks_per_endpoint=2,
@@ -977,7 +981,7 @@ class Function:
             os_list=os_list,
             eventfd=eventfd,
         )
-        self._function_strings = getStrings(lang_dict)
+        self._function_strings = getStrings(dict(lang_dict))
         self._out_aio_block_list = out_aio_block_list = []
         self._out_aio_block_dict = out_aio_block_dict = {}
         self._ep_descriptor_list = ep_descriptor_list = []
@@ -1117,6 +1121,7 @@ class Function:
         RESUME: 'onResume',
     }
 
+    # pylint: disable=unused-argument,no-self-use
     def getEndpointClass(self, is_in, descriptor):
         """
         Called during __enter__ when opening endpoint files, to get the class
@@ -1135,6 +1140,7 @@ class Function:
         and EndpointOUTFile-compatible class for OUT endpoints.
         """
         return EndpointINFile if is_in else EndpointOUTFile
+    # pylint: enable=unused-argument,no-self-use
 
     def processEventsForever(self):
         """
@@ -1400,11 +1406,11 @@ class HIDFunction(Function):
         path,
 
         report_descriptor,
-        descriptor_dict={},
+        descriptor_dict=(),
 
         fs_list=(), hs_list=(), ss_list=(),
         os_list=(),
-        lang_dict={},
+        lang_dict=(),
         all_ctrl_recip=False, config0_setup=False,
 
         is_boot_device=False,
@@ -1480,6 +1486,7 @@ class HIDFunction(Function):
             15: 2048000
             16: 4096000
         """
+        descriptor_dict = dict(descriptor_dict)
         descriptor_count = 1 + sum(
             (len(x) for x in descriptor_dict.values()),
         )

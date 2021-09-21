@@ -95,7 +95,7 @@ def main():
                 'serialnumber': 'my-serial-num',
             },
         },
-    ) as gadget:
+    ):
         try:
             signal.pause()
         except KeyboardInterrupt:

@@ -360,6 +360,7 @@ class Gadget:
 
     def __exit__(self, exc_type, exc_value, tb):
         self.__unenter()
+        return False
 
     def __unenter(self):
         # configfs cleanup is convoluted and rather surprising if it has to
