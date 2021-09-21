@@ -76,12 +76,18 @@ def main():
             buf = sys.stdin.read(BUF_SIZE)
             if not buf:
                 raise EOFError
+            encode = getattr(buf, 'encode', None)
+            if encode is not None:
+                buf = encode('utf-8', errors="replace")
             print('sending', len(buf), 'bytes', file=sys.stderr)
             handle.bulkWrite(to_device, buf)
         def onReceive(transfer):
             length = transfer.getActualLength()
             print('received', length, 'bytes', file=sys.stderr)
-            sys.stdout.write(transfer.getBuffer()[:length])
+            buf = transfer.getBuffer()[:length]
+            if getattr(sys.stdout, 'encoding', None) is not None:
+                buf = buf.decode('utf-8', errors='replace')
+            sys.stdout.write(buf)
             return True
         transfer_helper = usb1.USBTransferHelper()
         transfer_helper.setEventCallback(usb1.TRANSFER_COMPLETED, onReceive)
