@@ -613,7 +613,7 @@ class ConfigFunctionKernel(ConfigFunctionBase):
         for option_path, option_value in self.__config_dict.iteritems():
             option_abspath = os.path.normpath(os.path.join(path, option_path))
             if os.path.commonprefix((path, option_abspath)) != path:
-                raise ValuError('Invalid option path: %r' % (option_path, ))
+                raise ValueError('Invalid option path: %r' % (option_path, ))
             with open(option_abspath, 'w') as option_file:
                 option_file.write(option_value)
 
