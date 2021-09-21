@@ -219,7 +219,7 @@ class SubprocessCat(ConfigFunctionFFSSubprocess):
                 raise EOFError
             encode = getattr(value, 'encode', None)
             if encode is not None:
-                value = value.encode('utf-8', errors="replace")
+                value = encode('utf-8', errors="replace")
             buf = bytearray(value)
             trace('queuing', len(buf), 'bytes')
             in_ep_submit([buf])
