@@ -1146,10 +1146,7 @@ class Function:
         """
         Process events until either an exception occurs or close is called.
         """
-        # Intent: "with select.epoll(1) as epoll:"
-        # But it only became a context manager in python3...
-        epoll = select.epoll(1)
-        try:
+        with select.epoll(1) as epoll:
             epoll.register(self.eventfd, select.EPOLLIN)
             poll = epoll.poll
             processEvents = self.processEvents
@@ -1161,8 +1158,6 @@ class Function:
                         raise
                 else:
                     processEvents()
-        finally:
-            epoll.close()
 
     def processEvents(self):
         """
