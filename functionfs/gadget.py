@@ -162,10 +162,10 @@ class Gadget:
         elif not os.path.exists(os.path.join(self.class_udc_path, udc)):
             raise ValueError('No such UDC')
         self.__udc = udc
-        self.__config_list = list(enumerate(
+        self.__config_list = list(
             (
                 {
-                    'function_list': tuple(enumerate(config_dict['function_list'])),
+                    'function_list': tuple(config_dict['function_list']),
                     'attribute_dict': {
                         attribute_name: cast(
                             config_dict[attribute_name],
@@ -189,8 +189,7 @@ class Gadget:
                 }
                 for config_dict in config_list
             ),
-            1,
-        ))
+        )
         self.__lang_dict = {
             hex(lang): {
                 message_name: message_dict[message_name].encode('utf-8')
@@ -306,7 +305,10 @@ class Gadget:
         name_set = set()
         functions_root = os.path.join(name, 'functions')
         configs_root = os.path.join(name, 'configs')
-        for configuration_index, configuration_dict in self.__config_list:
+        for configuration_index, configuration_dict in enumerate(
+            self.__config_list,
+            1,
+        ):
             config_path = os.path.join(configs_root, 'c.%i' % (configuration_index, ))
             mkdir(config_path)
             dir_list.extend(
@@ -319,7 +321,9 @@ class Gadget:
                 config_path,
                 configuration_dict['attribute_dict'],
             )
-            for function_index, function in configuration_dict['function_list']:
+            for function_index, function in enumerate(
+                configuration_dict['function_list'],
+            ):
                 function_name = function.name
                 if function_name is None:
                     while True:
