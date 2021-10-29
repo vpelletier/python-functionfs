@@ -80,6 +80,7 @@ class Gadget:
     """
     udb_gadget_path = '/sys/kernel/config/usb_gadget/'
     class_udc_path = '/sys/class/udc/'
+    __function_list = ()
 
     def __init__(
         self,
@@ -226,7 +227,6 @@ class Gadget:
         )
         self.__name = name
         self.__real_name = None # chosen on __enter__
-        self.__function_list = []
         self.__dir_list = []
         self.__link_list = []
         self.__udc_path = None
@@ -300,7 +300,7 @@ class Gadget:
                 desc_file.write(value)
         dir_list.extend(self.__writeLangDict(name, self.__lang_dict))
         self.__writeAttributeDict(name, self.__attribute_dict)
-        function_list = self.__function_list
+        function_list = self.__function_list = []
         function_number_iterator = itertools.count()
         name_set = set()
         functions_root = os.path.join(name, 'functions')
@@ -396,8 +396,7 @@ class Gadget:
                     file=sys.stderr,
                 )
                 traceback.print_exc()
-        while function_list:
-            function = function_list.pop()
+        for function in function_list:
             try:
                 function.join()
             except Exception: # pylint: disable=broad-except
@@ -429,6 +428,31 @@ class Gadget:
                     file=sys.stderr,
                 )
         self.__real_name = None
+
+    def getFunction(self, configuration_index, function_index):
+        """
+        Retrieve a function instance.
+        Only valid after __enter__ has been called once.
+
+        configuration_index (int)
+            Index of the configuration whose function is to be retrieved.
+        function_index (int)
+            Index, in the configuration, of the function to retrieve.
+
+        Note: arguments are both 0-based indexes, unlike in the USB protocol
+        where configurations indexes are 1-based.
+        """
+        config_list = self.__config_list
+        if (
+            configuration_index < 0 or
+            not 0 <= function_index < len(
+                config_list[configuration_index]['function_list']
+            )
+        ):
+            raise IndexError
+        for index in range(configuration_index):
+            function_index += len(config_list[index]['function_list'])
+        return self.__function_list[function_index]
 
 class _UsernameAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
