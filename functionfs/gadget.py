@@ -622,6 +622,18 @@ class ConfigFunctionBase:
         """
         raise NotImplementedError
 
+    def getExitStatus(self):
+        """
+        Return the integer (typically 0 for success, and 1..127 for errors) exit
+        status of this function.
+
+        The meaning of this status if function-implementation-dependent.
+        Returns None when the function has not exited, or if there is no
+        meaningful status to collect for such function (ex: in-kernel
+        functions).
+        """
+        return None
+
 class ConfigFunctionKernel(ConfigFunctionBase):
     """
     Base class for config functions which are implemented in the kernel.
@@ -777,6 +789,7 @@ class ConfigFunctionFFSSubprocess(ConfigFunctionFFS):
     """
     __pid = None
     function = None
+    __exit_status = None
 
     def __init__(self, *args, **kw):
         super().__init__(*args, **kw)
@@ -848,12 +861,15 @@ class ConfigFunctionFFSSubprocess(ConfigFunctionFFS):
         Wait for function subprocess to exit.
         """
         try:
-            os.waitpid(self.__pid, 0)
+            _, wait_status = os.waitpid(self.__pid, 0)
         except OSError as exc:
             # If the child process does not exist (no status to reap), then
             # all good.
             if exc.errno != errno.ECHILD:
                 raise
+        else:
+            if not os.WIFSTOPPED(wait_status):
+                self.__exit_status = os.waitstatus_to_exitcode(wait_status)
         super().join()
 
     def run(self):
@@ -867,3 +883,11 @@ class ConfigFunctionFFSSubprocess(ConfigFunctionFFS):
             self.function.processEventsForever()
         except KeyboardInterrupt:
             pass
+
+    def getExitStatus(self):
+        """
+        Return the subprocess' exit status.
+
+        For use in the gadget process to inspect the function's exit status.
+        """
+        return self.__exit_status
