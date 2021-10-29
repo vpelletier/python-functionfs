@@ -795,7 +795,7 @@ class ConfigFunctionFFSSubprocess(ConfigFunctionFFS):
         self.__pid = pid = os.fork()
         if pid == 0:
             try:
-                status = os.EX_OK
+                status = 0
                 os.close(self.__read_pipe)
                 self.__read_pipe = None
                 os.chdir('/')
@@ -809,9 +809,15 @@ class ConfigFunctionFFSSubprocess(ConfigFunctionFFS):
                 with function:
                     os.write(self.__write_pipe, _READY_MARKER)
                     self.run()
+            except SystemExit as exc:
+                if exc.code is not None:
+                    status = exc.code
+                    if not isinstance(status, int):
+                        print(status, file=sys.stderr)
+                        status = 1
             except: # pylint: disable=bare-except
                 traceback.print_exc()
-                status = os.EX_SOFTWARE
+                status = 1
             finally:
                 os.close(self.__write_pipe)
                 os._exit(status) # pylint: disable=protected-access
