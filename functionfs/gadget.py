@@ -705,20 +705,17 @@ class ConfigFunctionKernel(ConfigFunctionBase):
         """
         No-op.
         """
-        return
 
     def kill(self):
         """
         No-op.
         """
         self.__path = None
-        return
 
     def join(self):
         """
         No-op.
         """
-        return
 
     def getOption(self, option_path):
         """
