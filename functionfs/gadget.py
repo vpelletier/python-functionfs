@@ -650,7 +650,7 @@ class ConfigFunctionBase:
         """
         raise NotImplementedError
 
-    def getExitStatus(self):
+    def getExitStatus(self): # pylint: disable=no-self-use
         """
         Return the integer (typically 0 for success, and 1..127 for errors) exit
         status of this function.
@@ -662,7 +662,9 @@ class ConfigFunctionBase:
         """
         return None
 
-class ConfigFunctionKernel(ConfigFunctionBase):
+class ConfigFunctionKernel(
+    ConfigFunctionBase,
+): # pylint: disable=abstract-method
     """
     Base class for config functions which are implemented in the kernel.
     """
@@ -676,6 +678,8 @@ class ConfigFunctionKernel(ConfigFunctionBase):
         uid, gid (any)
             Ignored. For compatibility with GadgetSubprocessManager.
         """
+        _ = uid # Silence pylint.
+        _ = gid # Silence pylint.
         self.__config_dict = dict(config_dict)
         super().__init__(name=name)
 
