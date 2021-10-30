@@ -638,11 +638,13 @@ class ConfigFunctionKernel(ConfigFunctionBase):
     """
     Base class for config functions which are implemented in the kernel.
     """
-    def __init__(self, config_dict=(), name=None):
+    def __init__(self, config_dict=(), name=None, uid=None, gid=None):
         """
         config_dict (dict)
             key (str): path, relative to the function, of the option to set.
             value (str): value of the option
+        uid, gid (any)
+            Ignored. For compatibility with GadgetSubprocessManager.
         """
         self.__config_dict = dict(config_dict)
         super().__init__(name=name)
