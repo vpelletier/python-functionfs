@@ -556,6 +556,7 @@ class GadgetSubprocessManager(Gadget):
             x.getExitStatus() is not None
             for x in self._iterFunctions()
         ):
+            signal.signal(signal.SIGCHLD, signal.SIG_DFL)
             raise KeyboardInterrupt
 
     def __enter__(self):
