@@ -561,6 +561,11 @@ class GadgetSubprocessManager(Gadget):
 
     def __enter__(self):
         super().__enter__()
+        # Note: it is important to set SIGCHLD handler after calling
+        # super().__enter__(), as otherwise the subprocess would get such
+        # sighandler.
+        # XXX: Should ConfigFunctionFFSSubprocess.start reset all sighandlers
+        # to SIG_DFL ? This seems like a lot of work for (usually) no benefits.
         signal.signal(
             signal.SIGCHLD,
             self._raiseKeyboardInterruptIfFunctionExited,
