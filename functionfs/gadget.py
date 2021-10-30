@@ -638,6 +638,8 @@ class ConfigFunctionKernel(ConfigFunctionBase):
     """
     Base class for config functions which are implemented in the kernel.
     """
+    __path = None
+
     def __init__(self, config_dict=(), name=None, uid=None, gid=None):
         """
         config_dict (dict)
@@ -649,15 +651,26 @@ class ConfigFunctionKernel(ConfigFunctionBase):
         self.__config_dict = dict(config_dict)
         super().__init__(name=name)
 
+    def _getOptionAbsPath(self, path, option_path):
+        """
+        Check wether option is a valid name (does not check if the option
+        exists).
+        """
+        self.__path = path
+        option_abspath = os.path.normpath(os.path.join(path, option_path))
+        if os.path.commonprefix((path, option_abspath)) != path:
+            raise ValueError('Invalid option path: %r' % (option_path, ))
+        return option_abspath
+
     def start(self, path):
         """
         Apply the content of config_dict.
         """
         for option_path, option_value in self.__config_dict.items():
-            option_abspath = os.path.normpath(os.path.join(path, option_path))
-            if os.path.commonprefix((path, option_abspath)) != path:
-                raise ValueError('Invalid option path: %r' % (option_path, ))
-            with open(option_abspath, 'w') as option_file:
+            with open(
+                self._getOptionAbsPath(path, option_path),
+                'w',
+            ) as option_file:
                 option_file.write(option_value)
 
     def wait(self):
@@ -670,6 +683,7 @@ class ConfigFunctionKernel(ConfigFunctionBase):
         """
         No-op.
         """
+        self.__path = None
         return
 
     def join(self):
@@ -677,6 +691,16 @@ class ConfigFunctionKernel(ConfigFunctionBase):
         No-op.
         """
         return
+
+    def getOption(self, option_path):
+        """
+        Read current option value.
+        """
+        with open(
+            self._getOptionAbsPath(self.__path, option_path),
+            'r',
+        ) as option_file:
+            return option_file.read()
 
 class ConfigFunctionFFS(ConfigFunctionBase): # pylint: disable=abstract-method
     """
