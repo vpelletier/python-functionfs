@@ -454,6 +454,12 @@ class Gadget:
             function_index += len(config_list[index]['function_list'])
         return self.__function_list[function_index]
 
+    def _iterFunctions(self):
+        """
+        Iterate over function instances.
+        """
+        return iter(self.__function_list)
+
 class _UsernameAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         passwd = pwd.getpwnam(values)
@@ -533,9 +539,31 @@ class GadgetSubprocessManager(Gadget):
             **kw
         )
 
+    def _raiseKeyboardInterruptIfFunctionExited(
+        self,
+        signal_number,
+        stack_frame,
+    ):
+        """
+        Intended as SIGCHLD signal handler.
+        Raise KeyboardInterrupt if any of our function exited.
+        Allows the function implementation to spawn other processes and these
+        processes exiting without causing the gadget to wind down.
+        """
+        _ = signal_number # Silence pylint.
+        _ = stack_frame # Silence pylint.
+        if any(
+            x.getExitStatus() is not None
+            for x in self._iterFunctions()
+        ):
+            raise KeyboardInterrupt
+
     def __enter__(self):
         super().__enter__()
-        signal.signal(signal.SIGCHLD, _raiseKeyboardInterrupt)
+        signal.signal(
+            signal.SIGCHLD,
+            self._raiseKeyboardInterruptIfFunctionExited,
+        )
         # We are on the same terminal as subprocesses, so we will be getting
         # SIGINT at the same time as them. But we need to wait for them to
         # cleanup and then we will be notified by SIGCHLD.
@@ -882,20 +910,41 @@ class ConfigFunctionFFSSubprocess(ConfigFunctionFFS):
             if exc.errno != errno.ESRCH:
                 raise
 
+    def _updateExitStatus(self, blocking):
+        if self.__exit_status is not None:
+            return
+        try:
+            wait_id_result = os.waitid(
+                os.P_PID,
+                self.__pid,
+                os.WEXITED | (
+                    0
+                    if blocking else
+                    os.WNOHANG
+                ),
+            )
+        except OSError as exc:
+            if exc.errno != errno.ECHILD:
+                raise
+            # Uh oh, child process exited and we did not get to read its exit
+            # status. Pick the generic error status.
+            # XXX: warn user ?
+            self.__exit_status = 1
+        else:
+            if wait_id_result is not None:
+                self.__exit_status = (
+                    wait_id_result.si_status
+                    if wait_id_result.si_code == os.CLD_EXITED else
+                    # Subprocess was killed or dumped core, pick the generic error
+                    # status.
+                    1
+                )
+
     def join(self):
         """
         Wait for function subprocess to exit.
         """
-        try:
-            _, wait_status = os.waitpid(self.__pid, 0)
-        except OSError as exc:
-            # If the child process does not exist (no status to reap), then
-            # all good.
-            if exc.errno != errno.ECHILD:
-                raise
-        else:
-            if not os.WIFSTOPPED(wait_status):
-                self.__exit_status = os.waitstatus_to_exitcode(wait_status)
+        self._updateExitStatus(blocking=True)
         super().join()
 
     def run(self):
@@ -916,4 +965,5 @@ class ConfigFunctionFFSSubprocess(ConfigFunctionFFS):
 
         For use in the gadget process to inspect the function's exit status.
         """
+        self._updateExitStatus(blocking=False)
         return self.__exit_status
