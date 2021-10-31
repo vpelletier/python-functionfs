@@ -1080,7 +1080,6 @@ class Function:
         out_aio_context = self._out_aio_context
         if out_aio_context is not None:
             out_aio_context.cancelAll()
-            self._out_aio_block_list = []
         ep_list = self._ep_list
         while ep_list:
             ep_list.pop().close()
