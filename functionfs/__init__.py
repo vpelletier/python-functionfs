@@ -1248,7 +1248,7 @@ class Function:
         Called when FunctionFS signals the function was (re)enabled.
         This may happen several times without onDisable being called.
         It must reset the function to its default state.
-        Also, submits transfers to all IN endpoints (if any).
+        Also, submits transfers to all OUT endpoints (if any).
 
         May be overridden in subclass.
         """
