@@ -86,6 +86,16 @@ class ConfigFunctionCDCNCM(ConfigFunctionKernel):
             # locally administered address from it.
             mac_set = set()
             for netdev in os.listdir(_SYS_CLASS_NET):
+                if not os.path.lexists(
+                    os.path.join(
+                        _SYS_CLASS_NET,
+                        netdev,
+                        'device',
+                    ),
+                ):
+                    # Skip interfaces which have no underlying device
+                    # (ex: loopback)
+                    continue
                 with open(os.path.join(
                     _SYS_CLASS_NET,
                     netdev,
