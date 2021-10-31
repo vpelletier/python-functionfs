@@ -832,18 +832,21 @@ class EndpointOUTFile(EndpointFile):
     """
     Read-only endpoint file.
     """
-    def __init__(self, path, submit, aio_block_list):
+    def __init__(self, path, submit, release, aio_block_list):
         """
         path (string)
             Endpoint file path.
         submit (AIOContext.submit)
             To submit AIOBlocks to after completion.
+        release ((AIOBlock) -> None)
+            Called when a comleted AIOBlock is not resubmitted.
         aio_block_list (list of AIOBlock)
             Blocks which belong to this endpoint. Modified to bind them to
             this file object (target_file and onCompletion).
         """
         super().__init__(path)
         self._submit = submit
+        self._release = release
         for aio_block in aio_block_list:
             aio_block.target_file = self
             aio_block.onCompletion = self._onComplete
@@ -880,7 +883,9 @@ class EndpointOUTFile(EndpointFile):
             data=data,
             status=status,
         )
-        if res != -errno.ESHUTDOWN:
+        if res == -errno.ESHUTDOWN:
+            self._release(aio_block)
+        else:
             # XXX: is it good to resubmit on any other error ?
             # XXX: what should be done on EAGAIN ?
             self._submit((aio_block, ))
@@ -1058,6 +1063,7 @@ class Function:
                     ep_file = endpoint_class(
                         path=endpoint_path,
                         submit=self._out_aio_context.submit,
+                        release=self._out_aio_block_list.append,
                         aio_block_list=out_aio_block_dict[index],
                     )
                 ep_list.append(ep_file)
@@ -1254,6 +1260,7 @@ class Function:
         self.disableRemoteWakeup()
         if self._out_aio_block_list:
             self._out_aio_context.submit(self._out_aio_block_list)
+            del self._out_aio_block_list[:]
 
     def onDisable(self):
         """
