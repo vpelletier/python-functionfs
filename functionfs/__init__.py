@@ -85,9 +85,8 @@ from .functionfs import (
     BIND, UNBIND, ENABLE, DISABLE, SETUP, SUSPEND, RESUME,
 )
 # pylint: enable=no-name-in-module
-from ._version import get_versions
-__version__ = get_versions()['version']
-del get_versions
+from . import _version
+__version__ = _version.get_versions()['version']
 
 __all__ = (
     'ch9',
