@@ -983,7 +983,7 @@ class Function:
             hs_list=hs_list,
             ss_list=ss_list,
             os_list=os_list,
-            eventfd=eventfd,
+            eventfd=None,
         )
         self._function_strings = getStrings(dict(lang_dict))
         self._out_aio_block_list = out_aio_block_list = []
@@ -1152,6 +1152,7 @@ class Function:
         """
         with select.epoll(1) as epoll:
             epoll.register(self.eventfd, select.EPOLLIN)
+            epoll.register(self._ep_list[0].fileno(), select.EPOLLIN)
             poll = epoll.poll
             processEvents = self.processEvents
             while self._open:
