@@ -1168,7 +1168,7 @@ class Function:
         Process any available event (both functionfs events and
         AIO completions).
 
-        Non-blocking. Should be called whenever ep0 or eventfd become readable.
+        Non-blocking. Should be called whenever eventfd become readable.
         """
         try:
             # Rearm before calling getEvent, so that we do not risk skipping
