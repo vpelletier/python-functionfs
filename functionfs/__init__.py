@@ -1052,6 +1052,7 @@ class Function:
                     is_in=is_in,
                     descriptor=descriptor,
                 )
+                # pylint: disable=unexpected-keyword-arg,no-value-for-parameter
                 if is_in:
                     ep_file = endpoint_class(
                         path=endpoint_path,
@@ -1065,6 +1066,7 @@ class Function:
                         release=self._out_aio_block_list.append,
                         aio_block_list=out_aio_block_dict[index],
                     )
+                # pylint: enable=unexpected-keyword-arg,no-value-for-parameter
                 ep_list.append(ep_file)
             fcntl.fcntl(
                 ep0,
