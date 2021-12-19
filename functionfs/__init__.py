@@ -1030,7 +1030,7 @@ class Function:
         # FunctionFS can queue up to 4 events, so let's read that much.
         self._ep0_event_array_type = ep0_event_array_type = Event * 4
         self._ep0_event_size = ctypes.sizeof(Event)
-        self._ep0_event_array_size = ctypes.sizeof(ep0_event_array_type)
+        self._ep0_event_buf = bytearray(ctypes.sizeof(ep0_event_array_type))
 
     def __enter__(self):
         """
@@ -1193,7 +1193,7 @@ class Function:
             out_aio_context = self._out_aio_context
             if out_aio_context is not None:
                 out_aio_context.getEvents(0)
-        buf = bytearray(self._ep0_event_array_size)
+        buf = self._ep0_event_buf
         length = self.ep0.readinto(buf)
         if length:
             event_dict = self.__event_dict
