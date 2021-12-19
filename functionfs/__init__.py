@@ -956,7 +956,7 @@ class Function:
             any configuration gets enabled.
         in_aio_blocks_max (int)
             Maximum number of IN transfers in-flight at any given time.
-            Submitting more transfers (using submitIN) will raise
+            Submitting more transfers (using submitIN) may raise
             OSError(EAGAIN).
             There may be a system-wide limit (64k AIO transfers as of 4.18).
         out_aio_blocks_per_endpoint (int)
