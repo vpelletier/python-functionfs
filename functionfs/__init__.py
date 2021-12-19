@@ -881,11 +881,15 @@ class EndpointOUTFile(EndpointFile):
 # FunctionFS can queue up to 4 events, so let's read that much.
 _EP0_EVENT_LIST_TYPE = Event * 4
 _EP0_EVENT_SIZE = ctypes.sizeof(Event)
+
+# XXX: how reliable is kernel version checking ?
+_, _, _KERNEL_VERSION, _, _ = os.uname()
+
 class Function:
     """
     Pythonic class for interfacing with FunctionFS.
 
-    Properties available:
+    Instance properties available:
     function_remote_wakeup_capable (bool)
         Whether the function wishes to be allowed to wake host.
     function_remote_wakeup (bool)
@@ -896,6 +900,14 @@ class Function:
       Same value as given to constructor.
       For forward compatibility, do not modify these properties (currently it
       has no effect on the function at all).
+
+    Class properties available:
+    quirks_ffs_unsafe_eventfd (bool)
+        Whether the current kernel has issues with f_fs eventfd support.
+        Initialised on module intialisation with a simple condition on
+        kernel-version. May be changed prior to instanciation to override
+        this heuristic either way. Modification does not affect existing
+        instances.
     """
     _open = False
     _ep_list = ()
@@ -903,6 +915,17 @@ class Function:
 
     function_remote_wakeup_capable = False
     function_remote_wakeup = False
+
+    # f_fs, before kernel version x.xx, had a bug which caused the
+    # kernel-internal eventfd reference counter to underflow during gadget
+    # teardown. Depending on the exact version, maybe build options and
+    # maybe archivtecture, this could lead to kernel panics.
+    # Add backward-compatibility with such versions by working around the
+    # issue: do not give an eventfd to f_fs, and instead submit an extra AIO
+    # operation to still get eventfd notified when ep0 becomes readable.
+    quirks_ffs_unsafe_eventfd = (
+        _KERNEL_VERSION < '5.16'
+    )
 
     def __init__(
         self,
@@ -960,13 +983,20 @@ class Function:
             flags |= ALL_CTRL_RECIP
         if config0_setup:
             flags |= CONFIG0_SETUP
+        self.__quirks_ffs_unsafe_eventfd = quirks_ffs_unsafe_eventfd = (
+            self.quirks_ffs_unsafe_eventfd
+        )
         self._function_descriptor = getDescsV2(
             flags,
             fs_list=fs_list,
             hs_list=hs_list,
             ss_list=ss_list,
             os_list=os_list,
-            eventfd=eventfd,
+            eventfd=(
+                None
+                if quirks_ffs_unsafe_eventfd else
+                eventfd
+            ),
         )
         self._function_strings = getStrings(dict(lang_dict))
         self._out_aio_block_list = out_aio_block_list = []
@@ -1005,6 +1035,19 @@ class Function:
                         ep_aio_block_list.append(out_block)
                         out_aio_block_list.append(out_block)
         self._ep0_event_list = _EP0_EVENT_LIST_TYPE()
+        if quirks_ffs_unsafe_eventfd:
+            # Piggy-back on the "in" AIO context for ep0 poll AIO block
+            in_aio_blocks_max += 1
+            self.__ep0_aio_block = libaio.AIOBlock(
+                mode=libaio.AIOBLOCK_MODE_POLL,
+                eventfd=eventfd,
+                onCompletion=self.__onEndpoint0AIOCompletion,
+                event_mask=select.EPOLLIN,
+            )
+            # Disable EP0 event processing in processEvents.
+            self.__processEndpoint0Events = lambda: None
+        else:
+            self.__processEndpoint0Events = self.__real_processEndpoint0Events
         if out_aio_block_list:
             self._out_aio_context = libaio.AIOContext(
                 len(out_aio_block_list),
@@ -1054,6 +1097,9 @@ class Function:
                 fcntl.F_SETFL,
                 fcntl.fcntl(ep0, fcntl.F_GETFL) | os.O_NONBLOCK,
             )
+            if self.__quirks_ffs_unsafe_eventfd:
+                self.__ep0_aio_block.target_file = ep0
+                self._in_aio_context.submit((self.__ep0_aio_block, ))
         except:
             self.__unenter()
             raise
@@ -1064,6 +1110,8 @@ class Function:
         """
         Undo what __enter__ did.
         """
+        if self.__quirks_ffs_unsafe_eventfd:
+            self.__ep0_aio_block.target_file = None
         self._in_aio_context.cancelAll()
         out_aio_context = self._out_aio_context
         if out_aio_context is not None:
@@ -1176,6 +1224,20 @@ class Function:
             out_aio_context = self._out_aio_context
             if out_aio_context is not None:
                 out_aio_context.getEvents(0)
+        self.__processEndpoint0Events()
+
+    def __onEndpoint0AIOCompletion(self, block, res, _):
+        """
+        AIO block completion callback when quirks_ffs_unsafe_eventfd is true.
+        """
+        self.__real_processEndpoint0Events()
+        if res != -errno.ESHUTDOWN:
+            self._in_aio_context.submit((block, ))
+
+    def __real_processEndpoint0Events(self):
+        """
+        Read and handle endpoint 0 kernel events.
+        """
         event_list = self._ep0_event_list
         length = self.ep0.readinto(event_list)
         if length:
