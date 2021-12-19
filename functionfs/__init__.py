@@ -904,6 +904,9 @@ class EndpointOUTFile(EndpointFile):
         May be overridden in subclass.
         """
 
+# FunctionFS can queue up to 4 events, so let's read that much.
+_EP0_EVENT_LIST_TYPE = Event * 4
+_EP0_EVENT_SIZE = ctypes.sizeof(Event)
 class Function:
     """
     Pythonic class for interfacing with FunctionFS.
@@ -1021,6 +1024,7 @@ class Function:
                         )
                         ep_aio_block_list.append(out_block)
                         out_aio_block_list.append(out_block)
+        self._ep0_event_list = _EP0_EVENT_LIST_TYPE()
         if out_aio_block_list:
             self._out_aio_context = libaio.AIOContext(
                 len(out_aio_block_list),
@@ -1028,10 +1032,6 @@ class Function:
         self._in_aio_context = libaio.AIOContext(
             in_aio_blocks_max,
         )
-        # FunctionFS can queue up to 4 events, so let's read that much.
-        self._ep0_event_array_type = ep0_event_array_type = Event * 4
-        self._ep0_event_size = ctypes.sizeof(Event)
-        self._ep0_event_buf = bytearray(ctypes.sizeof(ep0_event_array_type))
 
     def __enter__(self):
         """
@@ -1196,15 +1196,15 @@ class Function:
             out_aio_context = self._out_aio_context
             if out_aio_context is not None:
                 out_aio_context.getEvents(0)
-        buf = self._ep0_event_buf
-        length = self.ep0.readinto(buf)
+        event_list = self._ep0_event_list
+        length = self.ep0.readinto(event_list)
         if length:
             event_dict = self.__event_dict
-            count, remainder = divmod(length, self._ep0_event_size)
-            assert remainder == 0, (length, self._ep0_event_size)
-            event_list = self._ep0_event_array_type.from_buffer(buf)
-            for index in range(count):
+            index = 0
+            while length >= _EP0_EVENT_SIZE:
                 event = event_list[index]
+                index += 1
+                length -= _EP0_EVENT_SIZE
                 event_type = event.type
                 if event_type == SETUP:
                     setup = event.u.setup
@@ -1221,7 +1221,8 @@ class Function:
                         self.ep0.halt(setup.bRequestType)
                         raise
                 else:
-                    getattr(self, event_dict[event.type])()
+                    getattr(self, event_dict[event_type])()
+            assert length == 0, (index, length, _EP0_EVENT_SIZE)
 
     def getEndpoint(self, index):
         """
