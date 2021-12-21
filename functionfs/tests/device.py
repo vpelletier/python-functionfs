@@ -147,7 +147,7 @@ class FunctionFSTestDevice(functionfs.Function):
         return result
 
     def onEnable(self):
-        print('functionfs: ENABLE')
+        print('functionfs: onEnable')
         try:
             print('Real interface 0:', self.ep0.getRealInterfaceNumber(0))
         except IOError:
@@ -179,21 +179,31 @@ class FunctionFSTestDevice(functionfs.Function):
             thread.start()
 
     def onDisable(self):
-        print('functionfs: DISABLE')
+        print('functionfs: onDisable')
 
     def onBind(self):
-        print('functionfs: BIND')
+        print('functionfs: onBind')
 
     def onUnbind(self):
-        print('functionfs: UNBIND')
+        print('functionfs: onUnbind')
 
     def onSuspend(self):
-        print('functionfs: SUSPEND')
+        print('functionfs: onSuspend')
 
     def onResume(self):
-        print('functionfs: RESUME')
+        print('functionfs: onResume')
 
     def onSetup(self, request_type, request, value, index, length):
+        print(
+            'functionfs: onSetup(request_type=%#04x, request=%#04x, '
+            'value=%#06x, index=%#06x, length=%#06x)' % (
+                request_type,
+                request,
+                value,
+                index,
+                length,
+            ),
+        )
         request_type_type = request_type & functionfs.ch9.USB_TYPE_MASK
         if request_type_type == functionfs.ch9.USB_TYPE_VENDOR:
             if request == common.REQUEST_ECHO:
