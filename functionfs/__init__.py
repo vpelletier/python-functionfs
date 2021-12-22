@@ -1004,7 +1004,8 @@ class Function:
                     for _ in range(out_aio_blocks_per_endpoint):
                         # Using mmap to get a page-aligned buffer. f_fs strongly
                         # recommends aligning IN buffers to wMaxPacketSize
-                        # addresses, as this may be required by some UDCs.
+                        # addresses, as this may be required by some UDCs,
+                        # assume the same applies to OUT endpoints.
                         # Assume wMaxPacketSize will be less than a page.
                         out_block = libaio.AIOBlock(
                             mode=libaio.AIOBLOCK_MODE_READ,
