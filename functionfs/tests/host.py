@@ -98,17 +98,16 @@ def main():
 
         size = [0]
         def onTransfer(transfer):
-            result = time() < deadline
-            if result:
-                size[0] += transfer.getActualLength()
-            return result
+            if (
+                transfer.getStatus() == usb1.TRANSFER_COMPLETED and
+                time() < deadline
+            ):
+                    size[0] += transfer.getActualLength()
+                    transfer.submit()
 
-        usb_file_data_reader = usb1.USBTransferHelper()
-        usb_file_data_reader.setEventCallback(
-            usb1.TRANSFER_COMPLETED,
-            onTransfer,
-        )
         NUM_TRANSFER = 8
+        TRANSFER_SIZE = 512 * 2
+        DURATION = .2
         transfer_list = [handle.getTransfer() for _ in range(NUM_TRANSFER)]
 
         active_configuration = handle.getConfiguration()
@@ -118,26 +117,23 @@ def main():
             active_configuration = handle.getConfiguration()
             assert active_configuration == 1, active_configuration
         handle.claimInterface(0)
-        DURATION = .2
-        buf = bytearray(512)
+        buf = bytearray(TRANSFER_SIZE)
         for ep_desc in alt_setting:
             ep = ep_desc.getAddress()
-            if ep & 0xf0:
-                buf[0] = 0
-            else:
-                for offset, _ in enumerate(buf):
-                    buf[offset] = ep
-            size[0] = 0
+            if ep & 0xf0 == 0: # OUT endpoint
+                buf[0] = ep
+            size[0] = 0 # Reset mutable byte counter
             for transfer in transfer_list:
                 transfer.setBulk(
                     ep,
                     buf,
-                    callback=usb_file_data_reader,
+                    callback=onTransfer,
                     timeout=int(DURATION * 1000),
                 )
-                transfer.submit()
             begin = time()
             deadline = begin + DURATION
+            for transfer in transfer_list:
+                transfer.submit()
             while any(x.isSubmitted() for x in transfer_list):
                 context.handleEvents()
             actual_duration = time() - begin
