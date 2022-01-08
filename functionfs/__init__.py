@@ -171,7 +171,7 @@ def getInterfaceInAllSpeeds(interface, endpoint_list, class_descriptor_list=()):
           getDescriptor(USBSSPIsocEndpointDescriptor, ...)
         Must be provided and non-empty only when endpoint is isochronous and
         "superspeed" dict has "bmAttributes" bit 7 set.
-    class_descriptor (list of descriptors of any type)
+    class_descriptor_list (list of descriptors of any type)
       Descriptors to insert in all speeds between the interface descriptor and
       endpoint descriptors.
 
