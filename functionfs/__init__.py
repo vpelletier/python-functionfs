@@ -374,32 +374,6 @@ def getOSExtPropDesc(data_type, name, value):
         bProperty=value,
     )
 
-#def getDescs(*args, **kw):
-#    """
-#    Return a legacy format FunctionFS suitable for serialisation.
-#    Deprecated as of 3.14 .
-#
-#    NOT IMPLEMENTED
-#    """
-#    warnings.warn(
-#        DeprecationWarning,
-#        'Legacy format, deprecated as of 3.14.',
-#    )
-#    raise NotImplementedError('TODO')
-#    klass = type(
-#        'Descs',
-#        (DescsHead, ),
-#        {
-#            'fs_descrs': None, # TODO
-#            'hs_descrs': None, # TODO
-#        },
-#    )
-#    return klass(
-#        magic=DESCRIPTORS_MAGIC,
-#        length=ctypes.sizeof(klass),
-#        **kw
-#    )
-
 def getDescsV2(flags, fs_list=(), hs_list=(), ss_list=(), os_list=(), eventfd=None):
     """
     Return a FunctionFS descriptor suitable for serialisation.
