@@ -653,6 +653,7 @@ class ConfigFunctionBase:
 
         Should undo everything "start" & "wait" methods did before returning.
         """
+        raise NotImplementedError
 
     def getExitStatus(self): # pylint: disable=no-self-use
         """
@@ -709,6 +710,11 @@ class ConfigFunctionKernel(
             ) as option_file:
                 option_file.write(option_value)
 
+    def join(self):
+        """
+        No-op.
+        """
+
     def getOption(self, option_path):
         """
         Read current option value.
@@ -725,6 +731,7 @@ class ConfigFunctionFFS(ConfigFunctionBase): # pylint: disable=abstract-method
     """
     type_name = "ffs"
     _mountpoint = None
+    function = None
 
     def __init__(
         self,
@@ -778,7 +785,7 @@ class ConfigFunctionFFS(ConfigFunctionBase): # pylint: disable=abstract-method
         """
         return self._getFunction(path=path)
 
-    def start(self, path):
+    def _mount(self, path):
         """
         Mount functionfs and set _mountpoint.
         """
@@ -810,7 +817,14 @@ class ConfigFunctionFFS(ConfigFunctionBase): # pylint: disable=abstract-method
         )
         self._mountpoint = mountpoint
 
-    def join(self):
+    def start(self, path):
+        self._mount(path)
+        self.function = function = self.getFunction(
+            path=self._mountpoint,
+        )
+        function.__enter__()
+
+    def _umount(self):
         """
         Unmount functionfs and clear _mountpoint.
         """
@@ -824,6 +838,10 @@ class ConfigFunctionFFS(ConfigFunctionBase): # pylint: disable=abstract-method
         os.rmdir(mountpoint)
         self._mountpoint = None
 
+    def join(self):
+        self.function.__exit__(None, None, None)
+        self._umount()
+
 class ConfigFunctionFFSSubprocess(ConfigFunctionFFS):
     """
     Function is isolated in a subprocess, allowing a change of user and group.
@@ -831,7 +849,6 @@ class ConfigFunctionFFSSubprocess(ConfigFunctionFFS):
     well-behaved service), beware of relative paths !
     """
     __pid = None
-    function = None
     __exit_status = None
 
     def __init__(self, *args, **kw):
@@ -847,7 +864,7 @@ class ConfigFunctionFFSSubprocess(ConfigFunctionFFS):
         In the parent process: return the callables expected by Gadget.
         """
         signal.signal(signal.SIGTERM, _raiseKeyboardInterrupt)
-        super().start(path)
+        self._mount(path)
         self.__pid = pid = os.fork()
         if pid == 0:
             try:
@@ -934,7 +951,7 @@ class ConfigFunctionFFSSubprocess(ConfigFunctionFFS):
         Wait for function subprocess to exit.
         """
         self._updateExitStatus(blocking=True)
-        super().join()
+        self._umount()
 
     def run(self):
         """
