@@ -634,7 +634,6 @@ class ConfigFunctionBase:
         Useful mostly if "start" method spawned processes/threads which need
         to do further initialisation on their own.
         """
-        raise NotImplementedError
 
     def kill(self):
         """
@@ -646,7 +645,6 @@ class ConfigFunctionBase:
         functions which do not spawn anything) so such functions can wind down
         in parallel.
         """
-        raise NotImplementedError
 
     def join(self):
         """
@@ -654,7 +652,6 @@ class ConfigFunctionBase:
 
         Should undo everything "start" & "wait" methods did before returning.
         """
-        raise NotImplementedError
 
     def getExitStatus(self): # pylint: disable=no-self-use
         """
@@ -710,22 +707,6 @@ class ConfigFunctionKernel(
                 'w',
             ) as option_file:
                 option_file.write(option_value)
-
-    def wait(self):
-        """
-        No-op.
-        """
-
-    def kill(self):
-        """
-        No-op.
-        """
-        self.__path = None
-
-    def join(self):
-        """
-        No-op.
-        """
 
     def getOption(self, option_path):
         """
