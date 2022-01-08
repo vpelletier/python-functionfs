@@ -356,14 +356,15 @@ class Gadget:
                 )
         for function in function_list:
             function.wait()
-        self.__udc_path = udc_path = os.path.join(name, 'UDC')
+        udc_path = os.path.join(name, 'UDC')
         try:
             with open(udc_path, 'w') as udc:
                 udc.write(self.__udc)
         except (IOError, OSError) as exc:
             if exc.errno == 524: # ENOTSUPP, which is not ENOTSUP
                 exc.strerror = 'UDC cannot allocate this many endpoints'
-            raise
+            raise exc from None
+        self.__udc_path = udc_path
 
     def __exit__(self, exc_type, exc_value, tb):
         self.__unenter()
