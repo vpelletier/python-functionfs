@@ -918,6 +918,10 @@ class Function:
         Whether host has allowed the function to wake it up.
         Set and cleared by onSetup by calling enableRemoteWakeup and
         disableRemoteWakeup, respectively.
+    all_ctrl_recip, config0_setup:
+      Same value as given to constructor.
+      For forward compatibility, do not modify these properties (currently it
+      has no effect on the function at all).
     """
     _open = False
     _ep_list = ()
@@ -975,6 +979,8 @@ class Function:
         self._path = path
         self._ep_address_dict = ep_address_dict = {}
         self._eventfd = eventfd = libaio.EventFD(flags=libaio.EFD_NONBLOCK)
+        self.all_ctrl_recip = all_ctrl_recip
+        self.config0_setup = config0_setup
         flags = 0
         if all_ctrl_recip:
             flags |= ALL_CTRL_RECIP
