@@ -91,7 +91,7 @@ class Gadget:
         bcdDevice=None,
         bcdUSB=None,
         bDeviceClass=None,
-        bDeviceSubclass=None,
+        bDeviceSubClass=None,
         bDeviceProtocol=None,
         name=None,
         udc=None,
@@ -120,7 +120,7 @@ class Gadget:
         bcdUSB (int, None)
         bDeviceProtocol (int, None)
         bDeviceClass (int, None)
-        bDeviceSubclass (int, None)
+        bDeviceSubClass (int, None)
             See the USB specification for device descriptors.
             If None, the kernel default will be used.
             Some of these default values may prevent the gadget from working
@@ -212,7 +212,7 @@ class Gadget:
                 'bcdUSB': bcdUSB,
                 'bDeviceProtocol': bDeviceProtocol,
                 'bDeviceClass': bDeviceClass,
-                'bDeviceSubclass': bDeviceSubclass,
+                'bDeviceSubClass': bDeviceSubClass,
             }.items()
             if value is not None
         }
