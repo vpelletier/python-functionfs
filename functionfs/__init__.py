@@ -916,7 +916,7 @@ class Function:
     function_remote_wakeup_capable = False
     function_remote_wakeup = False
 
-    # f_fs, before kernel version x.xx, had a bug which caused the
+    # f_fs, before kernel version 5.16, had a bug which caused the
     # kernel-internal eventfd reference counter to underflow during gadget
     # teardown. Depending on the exact version, maybe build options and
     # maybe archivtecture, this could lead to kernel panics.
