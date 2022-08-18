@@ -1670,7 +1670,7 @@ class HIDFunction(Function):
         Call method on superclass (this class) otherwise so error is signaled
         to host.
         """
-        self.ep0.halt(ch9.USB_DIR_IN)
+        self.ep0.halt(ch9.USB_DIR_OUT)
 
     def getHIDReport(self, value, index, length):
         """
