@@ -693,7 +693,6 @@ class ConfigFunctionKernel(
         Check wether option is a valid name (does not check if the option
         exists).
         """
-        self.__path = path
         option_abspath = os.path.normpath(os.path.join(path, option_path))
         if os.path.commonprefix((path, option_abspath)) != path:
             raise ValueError('Invalid option path: %r' % (option_path, ))
@@ -703,6 +702,7 @@ class ConfigFunctionKernel(
         """
         Apply the content of config_dict.
         """
+        self.__path = path
         for option_path, option_value in self.__config_dict.items():
             with open(
                 self._getOptionAbsPath(path, option_path),
