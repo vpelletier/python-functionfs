@@ -27,6 +27,7 @@ setup(
     name='functionfs',
     description=next(x for x in long_description.splitlines() if x.strip()),
     long_description='.. contents::\n\n' + long_description,
+    long_description_content_type='text/x-rst',
     keywords='linux usb gadget functionfs',
     version=versioneer.get_version(),
     author='Vincent Pelletier',
