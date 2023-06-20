@@ -1536,7 +1536,7 @@ class HIDFunction(Function):
         descriptor_count = 1 + sum(
             (len(x) for x in descriptor_dict.values()),
         )
-        def buildDescriptor(max_packet, interval):
+        def buildDescriptor(max_packet, interval, need_companion=False):
             if (
                 in_report_max_length > max_packet or
                 out_report_max_length > max_packet
@@ -1578,6 +1578,13 @@ class HIDFunction(Function):
                     bInterval=interval,
                 ),
             ]
+            if need_companion:
+                result.append(getDescriptor(
+                    USBSSEPCompDescriptor,
+                    bMaxBurst=0,
+                    bmAttributes=0,
+                    wBytesPerInterval=0,
+                ))
             if out_report_max_length:
                 result.append(
                     getDescriptor(
@@ -1589,6 +1596,13 @@ class HIDFunction(Function):
                         bInterval=interval,
                     ),
                 )
+                if need_companion:
+                    result.append(getDescriptor(
+                        USBSSEPCompDescriptor,
+                        bMaxBurst=0,
+                        bmAttributes=0,
+                        wBytesPerInterval=0,
+                    ))
             return result
         super().__init__(
             path,
@@ -1600,7 +1614,11 @@ class HIDFunction(Function):
                 _MAX_PACKET_SIZE_DICT[ch9.USB_ENDPOINT_XFER_INT][1],
                 high_speed_interval,
             ),
-            ss_list=ss_list,
+            ss_list=ss_list or buildDescriptor(
+                _MAX_PACKET_SIZE_DICT[ch9.USB_ENDPOINT_XFER_INT][2],
+                high_speed_interval,
+                need_companion=True,
+            ),
             os_list=os_list,
             lang_dict=lang_dict,
             all_ctrl_recip=all_ctrl_recip,
