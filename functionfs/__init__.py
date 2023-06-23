@@ -1468,9 +1468,9 @@ class HIDFunction(Function):
         high_speed_interval=10,
     ):
         """
-        path, ss_list, os_list, lang_dict, all_ctrl_recip, config0_setup
+        path, os_list, lang_dict, all_ctrl_recip, config0_setup
             See Function.__init__ .
-        fs_list, hs_list:
+        fs_list, hs_list, ss_list:
             If provided, these values are used instead of automatically
             generating minimal valid descriptors, with IN endpoint at index 1
             and OUT endpoint (if out_report_max_length is non-zero) at
@@ -1479,7 +1479,7 @@ class HIDFunction(Function):
         report_descriptor (bytes)
             The report descriptor. Describes the structure of all reports
             the interface may generate.
-        hid_descriptor_list (dict)
+        descriptor_dict (dict)
             keys (int)
                 hid.HID_DT_* values
                 Note: hid.HID_DT_REPORT descriptor should rather be provided
