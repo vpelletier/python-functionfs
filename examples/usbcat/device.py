@@ -185,6 +185,7 @@ class SubprocessCat(ConfigFunctionFFSSubprocess):
             if self.__out_encoding is None else
             value.decode('utf-8', errors='replace')
         )
+        sys.stdout.flush()
 
     def __onCanSend(self):
         self.__epoll.register(sys.stdin, select.EPOLLIN)
