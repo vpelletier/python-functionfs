@@ -88,6 +88,7 @@ def main():
             if getattr(sys.stdout, 'encoding', None) is not None:
                 buf = buf.decode('utf-8', errors='replace')
             sys.stdout.write(buf)
+            sys.stdout.flush()
             return True
         transfer_helper = usb1.USBTransferHelper()
         transfer_helper.setEventCallback(usb1.TRANSFER_COMPLETED, onReceive)
