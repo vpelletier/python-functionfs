@@ -50,7 +50,7 @@ from .ch9 import (
     # USBQualifierDescriptor is reserved for gadgets, so don't expose it.
     USBOTGDescriptor,
     USBOTG20Descriptor,
-    # USBDebugDescriptor is not implemented in kernelas of this writing.
+    # USBDebugDescriptor is not implemented in kernel as of this writing.
     USBDebugDescriptor,
     USBInterfaceAssocDescriptor,
 )
@@ -919,7 +919,7 @@ class Function:
     # f_fs, before kernel version 5.16, had a bug which caused the
     # kernel-internal eventfd reference counter to underflow during gadget
     # teardown. Depending on the exact version, maybe build options and
-    # maybe archivtecture, this could lead to kernel panics.
+    # maybe architecture, this could lead to kernel panics.
     # Add backward-compatibility with such versions by working around the
     # issue: do not give an eventfd to f_fs, and instead submit an extra AIO
     # operation to still get eventfd notified when ep0 becomes readable.
