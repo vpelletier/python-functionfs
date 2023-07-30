@@ -129,6 +129,11 @@ _MAX_PACKET_SIZE_DICT = {
     ),
 }
 
+_ENDPOINT_DESCRIPTOR_DICT = {
+    USB_DT_ENDPOINT_SIZE: USBEndpointDescriptorNoAudio,
+    USB_DT_ENDPOINT_AUDIO_SIZE: USBEndpointDescriptor,
+}
+
 _MARKER = object()
 _EMPTY_DICT = {} # For internal ** falback usage
 def getInterfaceInAllSpeeds(interface, endpoint_list, class_descriptor_list=()):
@@ -651,8 +656,8 @@ class EndpointINFile(EndpointFile):
     """
     def __init__(self, path, submit, eventfd):
         """
-        path (string)
-            Endpoint file path.
+        path (string, int)
+            Endpoint file path or file descriptor.
         submit (AIOContext.submit)
             To submit AIOBlocks.
         eventfd (EventFD)
@@ -807,8 +812,8 @@ class EndpointOUTFile(EndpointFile):
     """
     def __init__(self, path, submit, release, aio_block_list):
         """
-        path (string)
-            Endpoint file path.
+        path (string, int)
+            Endpoint file path or file descriptor.
         submit (AIOContext.submit)
             To submit AIOBlocks to after completion.
         release ((AIOBlock) -> None)
@@ -937,6 +942,8 @@ class Function:
         in_aio_blocks_max=32,
         out_aio_blocks_per_endpoint=2,
         out_aio_blocks_max_packet_count=10,
+        function_descriptor=None,
+        function_strings=None,
     ):
         """
         path (string)
@@ -972,33 +979,137 @@ class Function:
                 out_aio_blocks_per_endpoint * sum_OUT_wMaxPacketSize *
                 out_aio_blocks_max_packet_count
             So by default 10kB per 512-bytes OUT endpoint will be allocated.
+        function_descriptor (bytes)
+            When provided, this value is parsed as a serialised function
+            descriptor in order to prepare AIO blocks, and no descriptor
+            (neither function nor string) will be written to endpoint 0 during
+            __enter__. The following arguments are ignored:
+              fs_list, hs_list, ss_list
+              os_list
+              lang_dict
+              all_ctrl_recip, config0_setup
+            This is intended to be used with systemd ListenUSBFunction feature,
+            in which case the value provided here should be the content of the
+            file provided as USBFunctionDescriptors.
+        function_strings (bytes)
+            When function_descriptor, this value is stored in the
+            _function_strings property without any processing.
+            Otherwise, it is ignored.
         """
         self._path = path
         self._ep_address_dict = ep_address_dict = {}
         self._eventfd = eventfd = libaio.EventFD(flags=libaio.EFD_NONBLOCK)
+        if function_descriptor is None:
+            self._need_descriptors = True
+            cannot_use_eventfd = self.quirks_ffs_unsafe_eventfd
+            flags = 0
+            if all_ctrl_recip:
+                flags |= ALL_CTRL_RECIP
+            if config0_setup:
+                flags |= CONFIG0_SETUP
+            self._function_descriptor = getDescsV2(
+                flags,
+                fs_list=fs_list,
+                hs_list=hs_list,
+                ss_list=ss_list,
+                os_list=os_list,
+                eventfd=(
+                    None
+                    if cannot_use_eventfd else
+                    eventfd
+                ),
+            )
+            self._function_strings = getStrings(dict(lang_dict))
+        else:
+            self._need_descriptors = False
+            cannot_use_eventfd = True
+            self._function_descriptor = function_descriptor
+            self._function_strings = function_strings
+            # Extract Endpoint descriptors from function_descriptor.
+            # This code assumes that the kernel validated the content of
+            # function_descriptor, so explicit checks are only done to detect
+            # cases where this code:
+            # - could be stale (ex: new magic)
+            # - cannot handle what the kernel received (ex: eventfd flag set)
+            # - would severely misbehave (ex: infinite loop)
+            # For other errors, rely on python raising generic exceptions.
+            def parse(ctype_class):
+                return (
+                    getattr(ctype_class, 'from_buffer_copy')(
+                        function_descriptor,
+                        offset,
+                    ),
+                    offset + ctypes.sizeof(ctype_class),
+                )
+            def parseUSBInterfaceList(count):
+                # Only append endpoint descriptors to result, as this is all
+                # this method needs, and they will not be used outside of it.
+                result = []
+                local_offset = 0
+                for _ in range(count):
+                    need_interface = True
+                    while True:
+                        head = USBDescriptorHeader.from_buffer_copy(
+                            function_descriptor,
+                            offset + local_offset,
+                        )
+                        if need_interface:
+                            if head.bDescriptorType != ch9.USB_DT_INTERFACE:
+                                raise ValueError(
+                                    'First descriptor is expected to be of type USB_DT_INTERFACE'
+                                )
+                            need_interface = False
+                        else:
+                            if head.bDescriptorType == ch9.USB_DT_INTERFACE:
+                                break
+                            if head.bDescriptorType == ch9.USB_DT_ENDPOINT:
+                                result.append(
+                                    _ENDPOINT_DESCRIPTOR_DICT[
+                                        head.bLength
+                                    ].from_buffer_copy(
+                                        function_descriptor,
+                                        offset + local_offset,
+                                    )
+                                )
+                        local_offset += head.bLength
+                return (
+                    result,
+                    offset + local_offset,
+                )
+            head, offset = parse(DescsHeadV2)
+            if head.magic != DESCRIPTORS_MAGIC_V2:
+                raise ValueError(
+                    'Unknown function_descriptor magic: %#08x, kernel=%r '
+                    'Please report this error.' % (head.magic, _KERNEL_VERSION),
+                )
+            if head.flags & EVENTFD:
+                # XXX: is it even possible to add support for this ?
+                raise ValueError(
+                    'function_descriptor has unsupported EVENTFD flag set',
+                )
+            all_ctrl_recip = bool(head.flags & ALL_CTRL_RECIP)
+            config0_setup = bool(head.flags & CONFIG0_SETUP)
+            if head.flags & HAS_FS_DESC:
+                fs_count, offset = parse(le32)
+            else:
+                fs_count = 0
+            if head.flags & HAS_HS_DESC:
+                hs_count, offset = parse(le32)
+            else:
+                hs_count = 0
+            if head.flags & HAS_SS_DESC:
+                ss_count, offset = parse(le32)
+            else:
+                ss_count = 0
+            if head.flags & HAS_MS_OS_DESC:
+                # Do not parse OS descriptors
+                _, offset = parse(le32)
+            fs_list, offset = parseUSBInterfaceList(fs_count)
+            hs_list, offset = parseUSBInterfaceList(hs_count)
+            ss_list, offset = parseUSBInterfaceList(ss_count)
+        self.__cannot_use_eventfd = cannot_use_eventfd
         self.all_ctrl_recip = all_ctrl_recip
         self.config0_setup = config0_setup
-        flags = 0
-        if all_ctrl_recip:
-            flags |= ALL_CTRL_RECIP
-        if config0_setup:
-            flags |= CONFIG0_SETUP
-        self.__quirks_ffs_unsafe_eventfd = quirks_ffs_unsafe_eventfd = (
-            self.quirks_ffs_unsafe_eventfd
-        )
-        self._function_descriptor = getDescsV2(
-            flags,
-            fs_list=fs_list,
-            hs_list=hs_list,
-            ss_list=ss_list,
-            os_list=os_list,
-            eventfd=(
-                None
-                if quirks_ffs_unsafe_eventfd else
-                eventfd
-            ),
-        )
-        self._function_strings = getStrings(dict(lang_dict))
         self._out_aio_block_list = out_aio_block_list = []
         self._out_aio_block_dict = out_aio_block_dict = {}
         self._ep_descriptor_list = ep_descriptor_list = []
@@ -1035,7 +1146,7 @@ class Function:
                         ep_aio_block_list.append(out_block)
                         out_aio_block_list.append(out_block)
         self._ep0_event_list = _EP0_EVENT_LIST_TYPE()
-        if quirks_ffs_unsafe_eventfd:
+        if cannot_use_eventfd:
             # Piggy-back on the "in" AIO context for ep0 poll AIO block
             in_aio_blocks_max += 1
             self.__ep0_aio_block = libaio.AIOBlock(
@@ -1056,21 +1167,42 @@ class Function:
             in_aio_blocks_max,
         )
 
-    def __enter__(self):
+    def __enter__(self, ep_name_list=()):
         """
         Sends descriptor to kernel and opens endpoint files.
+
+        ep_name_list (list of int)
+            If provided, this must be the file descriptors of the files
+            to use for all endpoints managed by the function, starting with
+            endpoint 0, followed by every endpoint referenced in the
+            function's descriptor, in the same order as their descriptor.
+            This is intended to be used with systemd ListenUSBFunction feature,
+            filled with the list provided by (3)sd_listen_fds.
         """
         if self._open:
             raise RuntimeError('Context manager already active')
         try:
-            ep0 = Endpoint0File(os.path.join(self._path, 'ep0'))
+            ep_descriptor_list = self._ep_descriptor_list
+            if ep_name_list:
+                if len(ep_name_list) != len(ep_descriptor_list) + 1:
+                    raise ValueError(
+                        'Expected %i endpoint file descriptors, got %i',
+                    )
+                ep0_name = ep_name_list[0]
+            else:
+                ep0_name = os.path.join(self._path, 'ep0')
+            ep0 = Endpoint0File(ep0_name)
             self._ep_list = ep_list = [ep0]
-            ep0.write(serialise(self._function_descriptor))
-            ep0.write(serialise(self._function_strings))
+            if self._need_descriptors:
+                ep0.write(serialise(self._function_descriptor))
+                ep0.write(serialise(self._function_strings))
             out_aio_block_dict = self._out_aio_block_dict
             for descriptor in self._ep_descriptor_list:
                 index = len(ep_list)
-                endpoint_path = os.path.join(self._path, 'ep%u' % (index, ))
+                if ep_name_list:
+                    endpoint_path = ep_name_list[index]
+                else:
+                    endpoint_path = os.path.join(self._path, 'ep%u' % (index, ))
                 is_in = bool(descriptor.bEndpointAddress & ch9.USB_DIR_IN)
                 endpoint_class = self.getEndpointClass(
                     is_in=is_in,
@@ -1097,7 +1229,7 @@ class Function:
                 fcntl.F_SETFL,
                 fcntl.fcntl(ep0, fcntl.F_GETFL) | os.O_NONBLOCK,
             )
-            if self.__quirks_ffs_unsafe_eventfd:
+            if self.__cannot_use_eventfd:
                 self.__ep0_aio_block.target_file = ep0
                 self._in_aio_context.submit((self.__ep0_aio_block, ))
         except:
@@ -1110,7 +1242,7 @@ class Function:
         """
         Undo what __enter__ did.
         """
-        if self.__quirks_ffs_unsafe_eventfd:
+        if self.__cannot_use_eventfd:
             self.__ep0_aio_block.target_file = None
         self._in_aio_context.cancelAll()
         out_aio_context = self._out_aio_context
