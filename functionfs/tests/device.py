@@ -13,7 +13,6 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
-from __future__ import print_function
 import functools
 import socket
 import functionfs
@@ -59,6 +58,8 @@ class TestEndpointINFile(functionfs.EndpointINFile):
         return False
 
 class TestEndpointOUTFile(functionfs.EndpointOUTFile):
+    __ep_addr = None
+
     def prime(self):
         """
         Called by onEnable to prime the pump.
@@ -117,7 +118,6 @@ class FunctionFSTestDevice(functionfs.Function):
             out_aio_blocks_per_endpoint=OUT_TRANSFER_COUNT,
             out_aio_blocks_max_packet_count=OUT_BUFFER_SIZE // 1024,
         )
-        self.__ep_count = len(ep_list)
         self.__echo_payload = b'NOT SET'
 
     def getEndpointClass(self, is_in, descriptor):
@@ -221,7 +221,7 @@ def main():
         'UDC. Each endpoint pair needs %iMB of RAM for transfer buffers.' % (
             (
                 IN_BUFFER_SIZE + OUT_BUFFER_SIZE * OUT_TRANSFER_COUNT
-            ) / (
+            ) // (
                 1024 * 1024
             ),
         ),

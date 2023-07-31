@@ -18,6 +18,7 @@ Linux functionfs definitions.
 
 From linux/usb/functionfs.h .
 """
+# pylint: disable=too-few-public-methods
 import ctypes
 import ioctl_opt
 from .common import u8, le16, le32, Enum
@@ -26,7 +27,6 @@ from .ch9 import (
     USBCtrlRequest,
 )
 
-# Translated from linux/usb/functionfs.h
 DESCRIPTORS_MAGIC = 1
 STRINGS_MAGIC = 2
 DESCRIPTORS_MAGIC_V2 = 3
@@ -110,7 +110,7 @@ class OSDescHeader(ctypes.LittleEndianStructure):
 
     | off | name            | type | description              |
     |-----+-----------------+------+--------------------------|
-    |   0 | inteface        | U8   | related interface number |
+    |   0 | interface       | U8   | related interface number |
     |   1 | dwLength        | U32  | length of the descriptor |
     |   5 | bcdVersion      | U16  | currently supported: 1   |
     |   7 | wIndex          | U16  | currently supported: 4   |
@@ -120,7 +120,7 @@ class OSDescHeader(ctypes.LittleEndianStructure):
 
     | off | name            | type | description              |
     |-----+-----------------+------+--------------------------|
-    |   0 | inteface        | U8   | related interface number |
+    |   0 | interface       | U8   | related interface number |
     |   1 | dwLength        | U32  | length of the descriptor |
     |   5 | bcdVersion      | U16  | currently supported: 1   |
     |   7 | wIndex          | U16  | currently supported: 5   |
@@ -220,7 +220,7 @@ class StringsHead(ctypes.LittleEndianStructure):
 class StringBase(ctypes.LittleEndianStructure):
     """
     For each language there is one stringtab entry (ie. there are lang_count
-    stringtab entires).  Each StringTab has following format:
+    stringtab in total).  Each StringTab has following format:
 
     | off | name    | type              | description                        |
     |-----+---------+-------------------+------------------------------------|

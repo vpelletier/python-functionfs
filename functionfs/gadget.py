@@ -82,7 +82,7 @@ class Gadget:
     class_udc_path = '/sys/class/udc/'
     __function_list = ()
 
-    def __init__(
+    def __init__( # pylint: disable=too-many-arguments
         self,
         config_list,
         idVendor=None,
@@ -105,7 +105,7 @@ class Gadget:
             Describes a gadget configuration. Each dict may have the following
             items:
             function_list (required, list of ConfigFunctionBase instances)
-                Described an USB function and allow controling its run cycle.
+                Described an USB function and allow controlling its run cycle.
             bmAttributes (optional, int)
             MaxPower (optional, int)
                 See the USB specification for Configuration descriptors.
@@ -241,7 +241,7 @@ class Gadget:
         with open(self.__udc_path, 'rb') as udc:
             return bool(udc.read())
 
-    def __writeAttributeDict(self, base, attribute_dict): # pylint: disable=no-self-use
+    def __writeAttributeDict(self, base, attribute_dict):
         for attribute_name, attribute_value in attribute_dict.items():
             with open(os.path.join(base, attribute_name), 'wb') as attribute_file:
                 attribute_file.write(attribute_value)
@@ -267,7 +267,7 @@ class Gadget:
             raise
         return self
 
-    def __enter(self):
+    def __enter(self): # pylint: disable=too-many-branches, too-many-statements
         dir_list = self.__dir_list
         link_list = self.__link_list
         def symlink(source, destination): # pylint: disable=missing-docstring
@@ -358,7 +358,7 @@ class Gadget:
             function.wait()
         udc_path = os.path.join(name, 'UDC')
         try:
-            with open(udc_path, 'w') as udc:
+            with open(udc_path, 'w', encoding='ascii') as udc:
                 udc.write(self.__udc)
         except (IOError, OSError) as exc:
             if exc.errno == 524: # ENOTSUPP, which is not ENOTSUP
@@ -373,7 +373,7 @@ class Gadget:
     def __unenter(self):
         # configfs cleanup is convoluted and rather surprising if it has to
         # be done by the user (ex: rmdir on non-empty directories whose content
-        # refuse to be individualy removed). So catch and report (to stderr)
+        # refuse to be individually removed). So catch and report (to stderr)
         # exceptions which may come from code out of this module, and continue
         # the teardown.
         # Should the cleanup actually fail, this will give the user the list
@@ -383,8 +383,8 @@ class Gadget:
             return
         udc_path = self.__udc_path
         if udc_path:
-            with open(udc_path, 'wb') as udc:
-                udc.write(b'')
+            with open(udc_path, 'w', encoding='ascii') as udc:
+                udc.write('')
         function_list = self.__function_list
         for function in function_list:
             try:
@@ -583,7 +583,7 @@ class GadgetSubprocessManager(Gadget):
         result = super().__exit__(exc_type, exc_value, tb)
         return result or isinstance(exc_value, KeyboardInterrupt)
 
-    def waitForever(self): # pylint: disable=no-self-use
+    def waitForever(self):
         """
         Wait for a signal (including a child exiting).
         """
@@ -655,7 +655,7 @@ class ConfigFunctionBase:
         """
         raise NotImplementedError
 
-    def getExitStatus(self): # pylint: disable=no-self-use
+    def getExitStatus(self):
         """
         Return the integer (typically 0 for success, and 1..127 for errors) exit
         status of this function.
@@ -690,7 +690,7 @@ class ConfigFunctionKernel(
 
     def _getOptionAbsPath(self, path, option_path):
         """
-        Check wether option is a valid name (does not check if the option
+        Check whether option is a valid name (does not check if the option
         exists).
         """
         option_abspath = os.path.normpath(os.path.join(path, option_path))
@@ -707,6 +707,7 @@ class ConfigFunctionKernel(
             with open(
                 self._getOptionAbsPath(path, option_path),
                 'w',
+                encoding='ascii',
             ) as option_file:
                 option_file.write(option_value)
 
@@ -722,6 +723,7 @@ class ConfigFunctionKernel(
         with open(
             self._getOptionAbsPath(self.__path, option_path),
             'r',
+            encoding='ascii',
         ) as option_file:
             return option_file.read()
 
@@ -822,6 +824,7 @@ class ConfigFunctionFFS(ConfigFunctionBase): # pylint: disable=abstract-method
         self.function = function = self.getFunction(
             path=self._mountpoint,
         )
+        # pylint: disable=unnecessary-dunder-call
         function.__enter__()
 
     def _umount(self):

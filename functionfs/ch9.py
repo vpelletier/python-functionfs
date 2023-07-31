@@ -13,6 +13,11 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
+
+"""
+Python translation of USB-related macros and structures from linux/usb/ch9.h
+"""
+# pylint: disable=too-few-public-methods
 import ctypes
 from .common import USBDescriptorHeader, u8, le16, le32
 
@@ -27,11 +32,11 @@ USB_DIR_OUT = 0 # to device
 USB_DIR_IN = 0x80 # to host
 
 # USB types, the second of three bRequestType fields
-USB_TYPE_MASK = (0x03 << 5)
-USB_TYPE_STANDARD = (0x00 << 5)
-USB_TYPE_CLASS = (0x01 << 5)
-USB_TYPE_VENDOR = (0x02 << 5)
-USB_TYPE_RESERVED = (0x03 << 5)
+USB_TYPE_MASK = 0x03 << 5
+USB_TYPE_STANDARD = 0x00 << 5
+USB_TYPE_CLASS = 0x01 << 5
+USB_TYPE_VENDOR = 0x02 << 5
+USB_TYPE_RESERVED = 0x03 << 5
 
 # USB recipients, the third of three bRequestType fields
 USB_RECIP_MASK = 0x1f
@@ -118,8 +123,8 @@ USB_INTRF_FUNC_SUSPEND = 0 # function suspend
 
 USB_INTR_FUNC_SUSPEND_OPT_MASK = 0xFF00
 # Suspend Options, Table 9-8 USB 3.0 spec
-USB_INTRF_FUNC_SUSPEND_LP = (1 << (8 + 0))
-USB_INTRF_FUNC_SUSPEND_RW = (1 << (8 + 1))
+USB_INTRF_FUNC_SUSPEND_LP = 1 << (8 + 0)
+USB_INTRF_FUNC_SUSPEND_RW = 1 << (8 + 1)
 
 # Interface status, Figure 9-5 USB 3.0 spec
 USB_INTRF_STAT_FUNC_RW_CAP = 1
@@ -203,11 +208,11 @@ USB_DT_SSP_ISOC_ENDPOINT_COMP = 0x31
 # Conventional codes for class-specific descriptors.  The convention is
 # defined in the USB "Common Class" Spec (3.11).  Individual class specs
 # are authoritative for their usage, not the "common class" writeup.
-USB_DT_CS_DEVICE = (USB_TYPE_CLASS | USB_DT_DEVICE)
-USB_DT_CS_CONFIG = (USB_TYPE_CLASS | USB_DT_CONFIG)
-USB_DT_CS_STRING = (USB_TYPE_CLASS | USB_DT_STRING)
-USB_DT_CS_INTERFACE = (USB_TYPE_CLASS | USB_DT_INTERFACE)
-USB_DT_CS_ENDPOINT = (USB_TYPE_CLASS | USB_DT_ENDPOINT)
+USB_DT_CS_DEVICE = USB_TYPE_CLASS | USB_DT_DEVICE
+USB_DT_CS_CONFIG = USB_TYPE_CLASS | USB_DT_CONFIG
+USB_DT_CS_STRING = USB_TYPE_CLASS | USB_DT_STRING
+USB_DT_CS_INTERFACE = USB_TYPE_CLASS | USB_DT_INTERFACE
+USB_DT_CS_ENDPOINT = USB_TYPE_CLASS | USB_DT_ENDPOINT
 
 # USBDescriptorHeader: from common.py
 
@@ -284,10 +289,10 @@ USB_DT_CONFIG_SIZE = 9
 assert ctypes.sizeof(USBOtherSpeedConfig) == USB_DT_CONFIG_SIZE
 
 # from config descriptor bmAttributes
-USB_CONFIG_ATT_ONE = (1 << 7) # must be set
-USB_CONFIG_ATT_SELFPOWER = (1 << 6) # self powered
-USB_CONFIG_ATT_WAKEUP = (1 << 5) # can wakeup
-USB_CONFIG_ATT_BATTERY = (1 << 4) # battery powered
+USB_CONFIG_ATT_ONE = 1 << 7 # must be set
+USB_CONFIG_ATT_SELFPOWER = 1 << 6 # self powered
+USB_CONFIG_ATT_WAKEUP = 1 << 5 # can wakeup
+USB_CONFIG_ATT_BATTERY = 1 << 4 # battery powered
 
 class USBStringDescriptor(USBConfigDescriptor):
     """
@@ -360,14 +365,14 @@ USB_ENDPOINT_MAX_ADJUSTABLE = 0x80
 
 # The USB 3.0 spec redefines bits 5:4 of bmAttributes as interrupt ep type.
 USB_ENDPOINT_INTRTYPE = 0x30
-USB_ENDPOINT_INTR_PERIODIC = (0 << 4)
-USB_ENDPOINT_INTR_NOTIFICATION = (1 << 4)
+USB_ENDPOINT_INTR_PERIODIC = 0 << 4
+USB_ENDPOINT_INTR_NOTIFICATION = 1 << 4
 
 USB_ENDPOINT_SYNCTYPE = 0x0c
-USB_ENDPOINT_SYNC_NONE = (0 << 2)
-USB_ENDPOINT_SYNC_ASYNC = (1 << 2)
-USB_ENDPOINT_SYNC_ADAPTIVE = (2 << 2)
-USB_ENDPOINT_SYNC_SYNC = (3 << 2)
+USB_ENDPOINT_SYNC_NONE = 0 << 2
+USB_ENDPOINT_SYNC_ASYNC = 1 << 2
+USB_ENDPOINT_SYNC_ADAPTIVE = 2 << 2
+USB_ENDPOINT_SYNC_SYNC = 3 << 2
 
 USB_ENDPOINT_USAGE_MASK = 0x30
 USB_ENDPOINT_USAGE_DATA = 0x00
@@ -402,14 +407,35 @@ class USBSSEPCompDescriptor(USBDescriptorHeader):
     ]
 
     def getMaxStreamCount(self):
+        """
+        For a bulk endpoint: return MaxStreams, decoded from bmAttributes.
+        """
         max_streams = self.bmAttributes & 0x1f
         return 1 << max_streams if max_streams else 0
+
+    def getIsochronousMultiplier(self):
+        """
+        For isochronous endpoint: return Mult, decoded from bmAttributes.
+        """
+        return 1 + (self.bmAttributes & 0x3)
+
+    def hasSuperSpeedPlusCompation(self):
+        """
+        For isochronous endpoint: return whether a SuperSpeedPlus is supposed
+        to follow, decoded from bmAttributes.
+        """
+        return bool(self.bmAttributes & 0x80)
 
 USB_DT_SS_EP_COMP_SIZE = 6
 assert ctypes.sizeof(USBSSEPCompDescriptor) == USB_DT_SS_EP_COMP_SIZE
 
-USB_SS_MULT = lambda x: 1 + (x & 0x3)
-USB_SS_SSP_ISOC_COMP = lambda x: x & (1 <<7)
+# pylint: disable=invalid-name, missing-function-docstring
+def USB_SS_MULT(value): # BBB: use USBSSEPCompDescriptor.get
+    return 1 + (value & 0x3)
+
+def USB_SS_SSP_ISOC_COMP(value): # BBB: use USBSSEPCompDescriptor.get
+    return value & (1 << 7)
+# pylint: enable=invalid-name, missing-function-docstring
 
 class USBQualifierDescriptor(USBDescriptorHeader):
     """

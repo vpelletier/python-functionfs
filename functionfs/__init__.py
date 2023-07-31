@@ -15,9 +15,9 @@
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
 """
 Interfaces with functionfs to simplify USB gadget function declaration and
-implementation on linux.
+implementation on Linux.
 
-Defines standard USB descriptors (see "ch9" submodule) and sends them to the
+Defines standard USB descriptors (see "ch9" sub-module) and sends them to the
 kernel to declare function's structure.
 Provides methods for accessing each endpoint and to react to events.
 """
@@ -130,7 +130,7 @@ _MAX_PACKET_SIZE_DICT = {
 }
 
 _MARKER = object()
-_EMPTY_DICT = {} # For internal ** falback usage
+_EMPTY_DICT = {} # For internal ** fallback usage
 def getInterfaceInAllSpeeds(interface, endpoint_list, class_descriptor_list=()):
     """
     Produce similar fs, hs and ss interface and endpoints descriptors.
@@ -219,7 +219,7 @@ def getInterfaceInAllSpeeds(interface, endpoint_list, class_descriptor_list=()):
                 hs_interval = interval
             else: # USB_ENDPOINT_XFER_ISOC or USB_ENDPOINT_XFER_INT
                 fs_interval = max(1, min(255, round(interval)))
-                # 8 is the number of microframes in a millisecond
+                # 8 is the number of micro-frames in a millisecond
                 hs_interval = max(
                     1,
                     min(16, int(round(1 + math.log(interval * 8, 2)))),
@@ -309,7 +309,7 @@ def getOSDesc(interface, ext_list):
     except ValueError:
         raise TypeError('Extensions of a single type are required.') from None
     if issubclass(ext_type, OSExtCompatDesc):
-        wIndex = 4
+        w_index = 4
         kw = {
             'b': OSDescHeaderBCount(
                 bCount=len(ext_list),
@@ -317,7 +317,7 @@ def getOSDesc(interface, ext_list):
             ),
         }
     elif issubclass(ext_type, OSExtPropDescHead):
-        wIndex = 5
+        w_index = 5
         kw = {
             'wCount': len(ext_list),
         }
@@ -337,7 +337,7 @@ def getOSDesc(interface, ext_list):
         interface=interface,
         dwLength=ctypes.sizeof(klass),
         bcdVersion=1,
-        wIndex=wIndex,
+        wIndex=w_index,
         ext_list=ext_list_type(*ext_list),
         **kw
     )
@@ -351,7 +351,7 @@ def getOSExtPropDesc(data_type, name, value):
         See PropertyName documentation.
     value (string)
         See PropertyData documentation.
-        NULL chars must be explicitely included in the value when needed,
+        NULL chars must be explicitly included in the value when needed,
         this function does not add any terminating NULL for example.
     """
     klass = type(
@@ -757,7 +757,7 @@ class EndpointINFile(EndpointFile):
                     raise
                 self.onSubmitEAGAIN(aio_block.buffer_list, user_data)
 
-    # pylint: disable=unused-argument,no-self-use
+    # pylint: disable=unused-argument
     def onComplete(self, buffer_list, user_data, status):
         """
         Called when a transfer, queued using submit, completed.
@@ -767,7 +767,7 @@ class EndpointINFile(EndpointFile):
             transfer.
         status (int)
             Error code if there was an error (negative errno value), number of
-            bytes transfered otherwise.
+            bytes transferred otherwise.
 
         If a true value is returned, the same transfer is resubmitted:
         - if returned value is True (the builtin), transfer reuses the same
@@ -799,7 +799,7 @@ class EndpointINFile(EndpointFile):
         May be overridden in subclass.
         """
         raise # pylint: disable=misplaced-bare-raise
-    # pylint: enable=unused-argument,no-self-use
+    # pylint: enable=unused-argument
 
 class EndpointOUTFile(EndpointFile):
     """
@@ -812,7 +812,7 @@ class EndpointOUTFile(EndpointFile):
         submit (AIOContext.submit)
             To submit AIOBlocks to after completion.
         release ((AIOBlock) -> None)
-            Called when a comleted AIOBlock is not resubmitted.
+            Called when a completed AIOBlock is not resubmitted.
         aio_block_list (list of AIOBlock)
             Blocks which belong to this endpoint. Modified to bind them to
             this file object (target_file and onCompletion).
@@ -904,8 +904,8 @@ class Function:
     Class properties available:
     quirks_ffs_unsafe_eventfd (bool)
         Whether the current kernel has issues with f_fs eventfd support.
-        Initialised on module intialisation with a simple condition on
-        kernel-version. May be changed prior to instanciation to override
+        Initialised on module initialisation with a simple condition on
+        kernel-version. May be changed prior to instantiation to override
         this heuristic either way. Modification does not affect existing
         instances.
     """
@@ -918,7 +918,7 @@ class Function:
 
     # f_fs, before kernel version 5.16, had a bug which caused the
     # kernel-internal eventfd reference counter to underflow during gadget
-    # teardown. Depending on the exact version, maybe build options and
+    # tear-down. Depending on the exact version, maybe build options and
     # maybe architecture, this could lead to kernel panics.
     # Add backward-compatibility with such versions by working around the
     # issue: do not give an eventfd to f_fs, and instead submit an extra AIO
@@ -927,7 +927,7 @@ class Function:
         _KERNEL_VERSION < '5.16'
     )
 
-    def __init__(
+    def __init__( # pylint: disable=too-many-arguments
         self,
         path,
         fs_list=(), hs_list=(), ss_list=(),
@@ -1156,17 +1156,17 @@ class Function:
         RESUME: 'onResume',
     }
 
-    # pylint: disable=unused-argument,no-self-use
+    # pylint: disable=unused-argument
     def getEndpointClass(self, is_in, descriptor):
         """
         Called during __enter__ when opening endpoint files, to get the class
         to use to represent given it.
-        May be overriden to customise specific endpoint classes.
+        May be overridden to customise specific endpoint classes.
 
         is_in (bool)
             Endpoint direction: true for IN endpoints, false for OUT
             endpoints.
-            Just a more convenient presentation of thuis value, also present
+            Just a more convenient presentation of this value, also present
             in the descriptor.
         descriptor (USBEndpointDescriptor{,NoAudio})
             Full descriptor for corresponding endpoint.
@@ -1175,7 +1175,7 @@ class Function:
         and EndpointOUTFile-compatible class for OUT endpoints.
         """
         return EndpointINFile if is_in else EndpointOUTFile
-    # pylint: enable=unused-argument,no-self-use
+    # pylint: enable=unused-argument
 
     def processEventsForever(self):
         """
@@ -1184,7 +1184,7 @@ class Function:
         with select.epoll(1) as epoll:
             epoll.register(self.eventfd, select.EPOLLIN)
             poll = epoll.poll
-            processEvents = self.processEvents
+            process_events = self.processEvents
             while self._open:
                 try:
                     poll()
@@ -1192,7 +1192,7 @@ class Function:
                     if exc.errno != errno.EINTR:
                         raise
                 else:
-                    processEvents()
+                    process_events()
 
     def processEvents(self):
         """
@@ -1206,9 +1206,9 @@ class Function:
             # events.
             # Discard returned value because:
             # - we cannot tell which AIO context has how many events ready
-            # - even if we could (which is easy: use moar eventfds !) any
+            # - even if we could (which is easy: use more eventfds !) any
             #   discrepancy would either result in a hard-lock (waiting for
-            #   events which did not arive yet, and whose AIO blocks may not
+            #   events which did not arrive yet, and whose AIO blocks may not
             #   have been submitted yet), or result in an early timeout which
             #   would defeat the purpose of observing this count.
             # So if this call succeeds, call non-blocking getEvents on both AIO
@@ -1352,6 +1352,8 @@ class Function:
 
         May be overridden in subclass.
         """
+        # pylint: disable=too-many-nested-blocks, too-many-statements
+        # pylint: disable=too-many-branches
         if (request_type & ch9.USB_TYPE_MASK) == ch9.USB_TYPE_STANDARD:
             recipient = request_type & ch9.USB_RECIP_MASK
             is_in = (request_type & ch9.USB_DIR_IN) == ch9.USB_DIR_IN
@@ -1418,6 +1420,8 @@ class Function:
                                 self.ep0.read(0)
                                 return
         self.ep0.halt(request_type)
+        # pylint: enable=too-many-nested-blocks, too-many-statements
+        # pylint: enable=too-many-branches
 
     def onSuspend(self):
         """
@@ -1447,7 +1451,7 @@ class HIDFunction(Function):
         (False, hid.HID_REQ_SET_PROTOCOL): 'setHIDProtocol',
     }
 
-    def __init__(
+    def __init__( # pylint: disable=too-many-arguments
         self,
         path,
 
@@ -1502,13 +1506,13 @@ class HIDFunction(Function):
             Must be greater than zero to auto-generate a valid descriptor.
             The length of the longest report this interface will produce,
             in bytes.
-            If >64 bytes, the devide will be high-speed only.
+            If >64 bytes, the device will be high-speed only.
         out_report_max_length (int)
             If zero, this interface will not have an interrupt OUT endpoint
             (only interrupt IN).
             Otherwise, this is the length of the longest report this interface
             can receive, in bytes.
-            If >64 bytes, the devide will be high-speed only.
+            If >64 bytes, the device will be high-speed only.
         full_speed_interval (int)
             Interval for polling endpoint for data transfers.
             In milliseconds units, 1 to 255.
@@ -1682,7 +1686,7 @@ class HIDFunction(Function):
     # pylint: disable=unused-argument
     def setInterfaceDescriptor(self, value, index, length):
         """
-        May be overriden and implemented in subclass.
+        May be overridden and implemented in subclass.
 
         Return if request was handled,
         Call method on superclass (this class) otherwise so error is signaled

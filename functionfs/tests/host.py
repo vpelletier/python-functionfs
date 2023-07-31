@@ -13,8 +13,6 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with python-functionfs.  If not, see <http://www.gnu.org/licenses/>.
-from __future__ import print_function
-
 from time import time
 import usb1
 from . import common
@@ -38,9 +36,17 @@ def main():
         assert len(interface) == 1
         alt_setting = interface[0]
         lang_id, = handle.getSupportedLanguageList()
-        interface_name = handle.getStringDescriptor(alt_setting.getDescriptor(), lang_id)
-        interface_name_ascii = handle.getASCIIStringDescriptor(alt_setting.getDescriptor())
-        assert interface_name == common.INTERFACE_NAME == interface_name_ascii, (repr(interface_name), repr(interface_name_ascii))
+        interface_name = handle.getStringDescriptor(
+            alt_setting.getDescriptor(),
+            lang_id,
+        )
+        interface_name_ascii = handle.getASCIIStringDescriptor(
+            alt_setting.getDescriptor(),
+        )
+        assert interface_name == common.INTERFACE_NAME == interface_name_ascii, (
+            repr(interface_name),
+            repr(interface_name_ascii),
+        )
 
         try:
             handle.controlRead(
@@ -102,8 +108,8 @@ def main():
                 transfer.getStatus() == usb1.TRANSFER_COMPLETED and
                 time() < deadline
             ):
-                    size[0] += transfer.getActualLength()
-                    transfer.submit()
+                size[0] += transfer.getActualLength()
+                transfer.submit()
 
         NUM_TRANSFER = 8
         TRANSFER_SIZE = 512 * 2
@@ -137,10 +143,17 @@ def main():
             while any(x.isSubmitted() for x in transfer_list):
                 context.handleEvents()
             actual_duration = time() - begin
-            print('%i%s' % (
-                ep & 0x7f,
-                'IN' if ep & 0x80 else 'OUT',
-            ), '\tbandwidth: %i B/s (%.2fs)' % (size[0] / actual_duration, actual_duration), hex(buf[0]))
+            print(
+                '%i%s' % (
+                    ep & 0x7f,
+                    'IN' if ep & 0x80 else 'OUT',
+                ),
+                '\tbandwidth: %i B/s (%.2fs)' % (
+                    size[0] / actual_duration,
+                    actual_duration,
+                ),
+                hex(buf[0]),
+            )
 
 if __name__ == '__main__':
     main()

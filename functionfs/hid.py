@@ -17,6 +17,7 @@
 HID-specific definitions.
 Built partly from linux/hid.h and from spec.
 """
+# pylint: disable=too-few-public-methods
 import ctypes
 from .common import USBDescriptorHeader, u8, le16
 from . import ch9
@@ -25,7 +26,7 @@ from . import ch9
 
 USB_INTERFACE_CLASS_HID = ch9.USB_CLASS_HID
 
-# USB HID interface subclass and protofol codes
+# USB HID interface subclass and protocol codes
 
 USB_INTERFACE_SUBCLASS_NONE = 0
 USB_INTERFACE_SUBCLASS_BOOT = 1
@@ -77,7 +78,7 @@ def getUSBHIDDescriptorClass(hid_descriptor_count=1):
     and return resulting class.
 
     hid_descriptor_count (int)
-        Number of HID descrtiptor entries.
+        Number of HID descriptor entries.
         Should be at least 1, as there must be one USB_DT_REPORT descriptor.
         Note: as of this writing (circa 4.18), f_fs only supports exactly
         1 HID descriptor entry.
