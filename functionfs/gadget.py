@@ -78,7 +78,7 @@ class Gadget:
     require elevated privileges (CAP_SYS_ADMIN for {,un}mounting, for example)
     so this code likely needs to run as root.
     """
-    udb_gadget_path = '/sys/kernel/config/usb_gadget/'
+    usb_gadget_path = '/sys/kernel/config/usb_gadget/'
     class_udc_path = '/sys/class/udc/'
     __function_list = ()
 
@@ -281,16 +281,16 @@ class Gadget:
             if name is None:
                 name = tempfile.mkdtemp(
                     prefix='g_',
-                    dir=self.udb_gadget_path,
+                    dir=self.usb_gadget_path,
                 )
                 dir_list.append(name)
             else:
-                name = os.path.join(self.udb_gadget_path, name)
+                name = os.path.join(self.usb_gadget_path, name)
                 mkdir(name)
         except OSError as exc:
             if exc.errno == errno.ENOENT:
                 exc.strerror = (
-                    self.udb_gadget_path +
+                    self.usb_gadget_path +
                     ' does not exist, is libcomposite module loaded ?'
                 )
             raise
